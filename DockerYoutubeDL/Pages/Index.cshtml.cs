@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Logging;
 
 namespace DockerYoutubeDL.Pages
 {
@@ -19,15 +20,17 @@ namespace DockerYoutubeDL.Pages
         public string Identifier { get; set; }
 
         private DownloadContext _context;
+        private ILogger _logger;
 
-        public IndexModel(DownloadContext context)
+        public IndexModel(DownloadContext context, ILogger<IndexModel> logger)
         {
-            if (context == null)
+            if (context == null || logger == null)
             {
                 throw new ArgumentException();
             }
 
             _context = context;
+            _logger = logger;
         }
 
         public void OnGet()
@@ -44,6 +47,8 @@ namespace DockerYoutubeDL.Pages
                 var principal = new ClaimsPrincipal(identity);
 
                 HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+
+                _logger.LogDebug($"User {this.Identifier} was provided an authentication token.");
             }
         }
 
@@ -64,10 +69,14 @@ namespace DockerYoutubeDL.Pages
                 await _context.SaveChangesAsync();
 
                 result = new DownloadInfoModelResult(true);
+
+                _logger.LogDebug($"New DownloadTask added to the db: {downloadTask.Downloader}, {downloadTask.Url}");
             }
             else
             {
                 result = new DownloadInfoModelResult(false);
+
+                _logger.LogDebug($"Download information failed to validate: {downloadInfo.Url}");
             }
 
             return new JsonResult(result);
