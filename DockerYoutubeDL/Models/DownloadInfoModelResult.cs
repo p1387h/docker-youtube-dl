@@ -8,10 +8,12 @@ namespace DockerYoutubeDL.Models
     public class DownloadInfoModelResult
     {
         public bool Success { get; set; }
+        public Guid DownloadTaskId { get; set; }
 
-        public DownloadInfoModelResult(bool success)
+        public DownloadInfoModelResult(bool success, Guid downloadTaskId)
         {
-            Success = success;
+            this.Success = success;
+            this.DownloadTaskId = downloadTaskId;
         }
     }
 }

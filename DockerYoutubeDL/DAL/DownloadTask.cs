@@ -7,9 +7,9 @@ namespace DockerYoutubeDL.DAL
 {
     public class DownloadTask
     {
-        public int Id { get; set; }
+        public Guid Id { get; set; }
         public string Url { get; set; }
         public Guid Downloader { get; set; }
-        public DownloadTaskStatus Status { get; set; }
+        public DateTime DateAdded { get; set; }
     }
 }

@@ -62,19 +62,20 @@ namespace DockerYoutubeDL.Pages
                 var downloadTask = new DownloadTask()
                 {
                     Downloader = new Guid(HttpContext.User.Identity.Name),
-                    Url = downloadInfo.Url
+                    Url = downloadInfo.Url,
+                    DateAdded = DateTime.Now
                 };
 
                 await _context.DownloadTask.AddAsync(downloadTask);
                 await _context.SaveChangesAsync();
 
-                result = new DownloadInfoModelResult(true);
+                result = new DownloadInfoModelResult(true, downloadTask.Id);
 
-                _logger.LogDebug($"New DownloadTask added to the db: {downloadTask.Downloader}, {downloadTask.Url}");
+                _logger.LogDebug($"New DownloadTask added to the db: Downloader={downloadTask.Downloader}, Url={downloadTask.Url}, Id={downloadTask.Id}");
             }
             else
             {
-                result = new DownloadInfoModelResult(false);
+                result = new DownloadInfoModelResult(false, new Guid());
 
                 _logger.LogDebug($"Download information failed to validate: {downloadInfo.Url}");
             }

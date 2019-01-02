@@ -23,7 +23,7 @@ namespace DockerYoutubeDL.DAL
         {
             base.OnModelCreating(modelBuilder);
 
-            // Configuratio of the DownloadTask table.
+            // Configuration of the DownloadTask table.
             modelBuilder.Entity<DownloadTask>()
                 .HasKey(x => x.Id);
             modelBuilder.Entity<DownloadTask>()
@@ -33,10 +33,10 @@ namespace DockerYoutubeDL.DAL
                 .Property(x => x.Url)
                 .IsRequired();
             modelBuilder.Entity<DownloadTask>()
-                .Property(x => x.Status)
-                .HasDefaultValue(DownloadTaskStatus.Waiting);
-            modelBuilder.Entity<DownloadTask>()
                 .Property(x => x.Downloader)
+                .IsRequired();
+            modelBuilder.Entity<DownloadTask>()
+                .Property(x => x.DateAdded)
                 .IsRequired();
         }
     }

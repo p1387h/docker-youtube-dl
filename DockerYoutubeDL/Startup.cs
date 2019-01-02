@@ -12,6 +12,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using DockerYoutubeDL.SignalR;
+using DockerYoutubeDL.Services;
+using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace DockerYoutubeDL
 {
@@ -30,11 +33,19 @@ namespace DockerYoutubeDL
             services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
                 .AddCookie();
 
-            services.AddDbContext<DownloadContext>(options => options.UseInMemoryDatabase("internalDownloadDb"));
+            // In memory db: 
+            // root needed since the provider in the custom factory differs from the one used here!
+            var root = new InMemoryDatabaseRoot();
+            services.AddSingleton<InMemoryDatabaseRoot>(root);
+            services.AddDbContext<DownloadContext>(options => options.UseInMemoryDatabase("internalDownloadDb", root));
 
             // SignalR components:
             services.AddTransient<UpdateHub>();
             services.AddSignalR();
+
+            // Download background service:
+            services.AddSingleton<IDesignTimeDbContextFactory<DownloadContext>, DownloadContextFactory>();
+            services.AddHostedService<DownloadBackgroundService>();
 
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
         }
