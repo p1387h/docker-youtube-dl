@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
+using DockerYoutubeDL.SignalR;
 
 namespace DockerYoutubeDL
 {
@@ -31,6 +32,10 @@ namespace DockerYoutubeDL
 
             services.AddDbContext<DownloadContext>(options => options.UseInMemoryDatabase("internalDownloadDb"));
 
+            // SignalR components:
+            services.AddTransient<UpdateHub>();
+            services.AddSignalR();
+
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
         }
 
@@ -45,6 +50,7 @@ namespace DockerYoutubeDL
             app.UseStaticFiles();
             app.UseAuthentication();
 
+            app.UseSignalR(options => options.MapHub<UpdateHub>("/ws"));
             app.UseMvc();
         }
     }
