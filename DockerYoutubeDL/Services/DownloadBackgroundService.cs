@@ -167,17 +167,37 @@ namespace DockerYoutubeDL.Services
                 };
                 var arguments = new List<string>()
                 {
-                    "-x",
-                    "--audio-format",
-                    "mp3",
                     "--no-call-home",
                     "--ffmpeg-location",
                     $"{ffmpegLocation}",
                     "-o",
                     Path.Combine(downloadFolder, "%(title)s.%(ext)s").ToString(),
-                    downloadTask.Url
                 };
 
+                // Depending on the chosen settings, different types of arguments must be
+                // provided to the command line.
+                if (downloadTask.AudioFormat != AudioFormat.None)
+                {
+                    arguments.AddRange(new List<string>
+                    {
+                        "-x",
+                        "--audio-format",
+                        Enum.GetName(typeof(AudioFormat), downloadTask.AudioFormat).ToLower()
+                    });
+                }
+                else if (downloadTask.VideoFormat != VideoFormat.None)
+                {
+                    arguments.AddRange(new List<string>
+                    {
+                        "--recode-video",
+                        Enum.GetName(typeof(VideoFormat), downloadTask.VideoFormat).ToLower()
+                    });
+                }
+
+                // Url must be added last.
+                arguments.Add(downloadTask.Url);
+
+                // Transfer all arguments to the process information.
                 foreach (var entry in arguments)
                 {
                     processInfo.ArgumentList.Add(entry);
