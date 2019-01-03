@@ -39,6 +39,9 @@ namespace DockerYoutubeDL
             services.AddSingleton<InMemoryDatabaseRoot>(root);
             services.AddDbContext<DownloadContext>(options => options.UseInMemoryDatabase("internalDownloadDb", root));
 
+            // Component for generating the paths of the download folders:
+            services.AddSingleton<DownloadPathGenerator>();
+
             // SignalR components:
             services.AddSingleton<UpdateClientContainer>();
             services.AddTransient<UpdateHub>();

@@ -26,15 +26,18 @@ namespace DockerYoutubeDL.Services
         private IConfiguration _config;
         private IHubContext<UpdateHub> _hub;
         private UpdateClientContainer _container;
+        private DownloadPathGenerator _pathGenerator;
 
         public DownloadBackgroundService(
             IDesignTimeDbContextFactory<DownloadContext> factory,
             ILogger<DownloadBackgroundService> logger,
             IConfiguration config,
             IHubContext<UpdateHub> hub,
-            UpdateClientContainer container)
+            UpdateClientContainer container,
+            DownloadPathGenerator pathGenerator)
         {
-            if (factory == null || logger == null || config == null || hub == null || container == null)
+            if (factory == null || logger == null || config == null ||
+                hub == null || container == null || pathGenerator == null)
             {
                 throw new ArgumentException();
             }
@@ -44,6 +47,7 @@ namespace DockerYoutubeDL.Services
             _config = config;
             _hub = hub;
             _container = container;
+            _pathGenerator = pathGenerator;
         }
 
         protected async override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -149,7 +153,7 @@ namespace DockerYoutubeDL.Services
 
                 _logger.LogDebug($"Preparing to download {downloadTask.Url}");
 
-                var downloadFolder = this.GenerateDownloadFolderPath(downloadTask.Downloader, downloadTask.Id).ToString();
+                var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadTask.Downloader, downloadTask.Id).ToString();
                 var ffmpegLocation = _config.GetValue<string>("FfmpegLocation");
                 var youtubeDlLocation = _config.GetValue<string>("YoutubeDlLocation");
 
@@ -183,18 +187,6 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private string GenerateDownloadFolderPath(Guid downloaderIdentifier, Guid downloadTaskIdentifier)
-        {
-            var downloadRootFolder = _config.GetValue<string>("DownloadRootFolder");
-            var downloadFolderPath = Path.Combine(
-                downloadRootFolder,
-                downloaderIdentifier.ToString(),
-                downloadTaskIdentifier.ToString()
-            );
-
-            return downloadFolderPath;
-        }
-
         private async Task RemoveDownloadTaskAsync(Guid id)
         {
             using (var db = _factory.CreateDbContext(new string[0]))
@@ -225,7 +217,7 @@ namespace DockerYoutubeDL.Services
             using (var db = _factory.CreateDbContext(new string[0]))
             {
                 var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                var downloadFolder = this.GenerateDownloadFolderPath(downloadTask.Downloader, downloadTask.Id);
+                var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadTask.Downloader, downloadTask.Id);
                 var files = Directory.GetFiles(downloadFolder);
                 var generatedResults = new List<DownloadResult>();
 
