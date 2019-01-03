@@ -15,7 +15,7 @@ namespace DockerYoutubeDL.SignalR
         private ILogger _logger;
         private UpdateClientContainer _container;
         private DownloadPathGenerator _pathGenerator;
-        private IConfiguration _config
+        private IConfiguration _config;
 
         public UpdateHub(
             ILogger<UpdateHub> logger, 
