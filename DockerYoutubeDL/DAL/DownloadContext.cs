@@ -38,6 +38,21 @@ namespace DockerYoutubeDL.DAL
             modelBuilder.Entity<DownloadTask>()
                 .Property(x => x.DateAdded)
                 .IsRequired();
+
+            // Configuration of the DownloadResult table.
+            modelBuilder.Entity<DownloadResult>()
+                .HasKey(x => x.Id);
+            modelBuilder.Entity<DownloadResult>()
+                .Property(x => x.Id)
+                .IsRequired();
+            modelBuilder.Entity<DownloadResult>()
+                .Property(x => x.DateDownload)
+                .IsRequired();
+            modelBuilder.Entity<DownloadResult>()
+                .Property(x => x.PathToFile)
+                .IsRequired();
+            modelBuilder.Entity<DownloadResult>()
+                .HasOne<DownloadTask>(x => x.DownloadTask);
         }
     }
 }
