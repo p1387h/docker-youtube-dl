@@ -43,7 +43,7 @@ window.addEventListener("load", function () {
     let start = async function () {
         try {
             await connection.start();
-            console.log('connected');
+            console.log("connected");
         } catch (err) {
             console.log(err);
             setTimeout(() => start(), 5000);
@@ -53,6 +53,11 @@ window.addEventListener("load", function () {
     connection.onclose(async () => {
         await start();
     })
+
+    connection.on("DownloadFinished", (taskIdentifier, taskResultIdentifier) => {
+        console.log(taskIdentifier);
+        console.log(taskResultIdentifier);
+    });
 
     start();
 });

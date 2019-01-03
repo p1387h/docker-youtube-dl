@@ -40,12 +40,16 @@ namespace DockerYoutubeDL
             services.AddDbContext<DownloadContext>(options => options.UseInMemoryDatabase("internalDownloadDb", root));
 
             // SignalR components:
+            services.AddSingleton<UpdateClientContainer>();
             services.AddTransient<UpdateHub>();
             services.AddSignalR();
 
             // Download background service:
             services.AddSingleton<IDesignTimeDbContextFactory<DownloadContext>, DownloadContextFactory>();
             services.AddHostedService<DownloadBackgroundService>();
+
+            // Notification background service:
+            services.AddHostedService<DownloadNotificationBackgroundService>();
 
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
         }

@@ -10,6 +10,7 @@ namespace DockerYoutubeDL.DAL
     public class DownloadContext : DbContext
     {
         public DbSet<DownloadTask> DownloadTask { get; set; }
+        public DbSet<DownloadResult> DownloadResult { get; set; }
 
         public DownloadContext()
         {

@@ -13,7 +13,7 @@ namespace DockerYoutubeDL.Services
     public class DownloadBackgroundService : BackgroundService
     {
         private int _waitTimeSeconds = 10;
-        // Factory is used since the service is instantiated once as singleton and therefore 
+        // Factory is used since the service is instantiated once as singleton and therefor 
         // outlives the "normal" session lifetime of the dbcontext.
         private IDesignTimeDbContextFactory<DownloadContext> _factory;
         private ILogger _logger;

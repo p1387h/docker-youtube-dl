@@ -7,5 +7,7 @@ namespace DockerYoutubeDL.SignalR
 {
     public interface IUpdateClient
     {
+        // Id of the task (received when it got queued up) and id of the result corresponding to the task.
+        Task DownloadFinished(Guid taskIdentifier, Guid taskResultIdentifier);
     }
 }

@@ -11,6 +11,7 @@ namespace DockerYoutubeDL.DAL
         public DateTime DateDownload { get; set; }
         public bool WasDownloaded { get; set; }
         public string PathToFile { get; set; }
+        public bool WasNotified { get; set; }
 
         public DownloadTask DownloadTask { get; set; }
     }
