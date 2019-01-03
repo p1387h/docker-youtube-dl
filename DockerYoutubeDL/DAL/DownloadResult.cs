@@ -8,10 +8,9 @@ namespace DockerYoutubeDL.DAL
     public class DownloadResult
     {
         public Guid Id { get; set; }
-        public DateTime DateDownload { get; set; }
         public string PathToFile { get; set; }
-        public bool WasNotified { get; set; }
 
-        public DownloadTask DownloadTask { get; set; }
+        public Guid IdentifierDownloader { get; set; }
+        public Guid IdentifierDownloadTask { get; set; }
     }
 }

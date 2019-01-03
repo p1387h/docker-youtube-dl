@@ -14,6 +14,5 @@ namespace DockerYoutubeDL.DAL
         public DateTime DateAdded { get; set; }
         public AudioFormat AudioFormat { get; set; }
         public VideoFormat VideoFormat { get; set; }
-        public bool WasDownloaded { get; set; }
     }
 }

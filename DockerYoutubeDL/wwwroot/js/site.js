@@ -8,7 +8,7 @@ window.addEventListener("load", function () {
         let url = input.value;
         let data = JSON.stringify({ url: url });
 
-        input.value = "";
+        //input.value = "";
 
         fetch(".", {
             method: 'POST',
@@ -23,10 +23,10 @@ window.addEventListener("load", function () {
             })
             .then(function (value) {
                 if (value.success === true) {
-                    console.log("Success");
+                    console.log(value);
                 }
                 else {
-                    console.log("Failure");
+                    console.log(value);
                 }
             })
             .catch(function (error) {
@@ -55,8 +55,11 @@ window.addEventListener("load", function () {
     })
 
     connection.on("DownloadFinished", (taskIdentifier, taskResultIdentifier) => {
-        console.log(taskIdentifier);
-        console.log(taskResultIdentifier);
+        console.log({ state: "Finished", task: taskIdentifier, result: taskResultIdentifier });
+    });
+
+    connection.on("DownloadFailed", (taskIdentifier) => {
+        console.log({ state: "Failed", task: taskIdentifier });
     });
 
     start();
