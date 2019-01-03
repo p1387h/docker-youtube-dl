@@ -11,5 +11,9 @@ namespace DockerYoutubeDL.Models
         [Url]
         [Required]
         public string Url { get; set; }
+
+        public AudioFormat AudioFormat { get; set; }
+
+        public VideoFormat VideoFormat { get; set; }
     }
 }
