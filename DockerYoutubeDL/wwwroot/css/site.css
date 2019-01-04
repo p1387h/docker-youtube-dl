@@ -35,3 +35,22 @@ body {
         display: none;
     }
 }
+
+#containerInput {
+    margin-top: 40px;
+    margin-bottom: 20px;
+}
+
+#containerFormats {
+    margin-bottom: 40px;
+}
+
+.listHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between
+}
+
+.listHeader > a {
+    color: black
+}

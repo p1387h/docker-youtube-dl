@@ -6,17 +6,29 @@ window.addEventListener("load", function () {
     $("#buttonDownload")[0].addEventListener("click", function () {
         let input = $("#inputDownload")[0];
         let url = input.value;
-        let data = JSON.stringify({ url: url });
+        let data = { url: url };
+
+        // Find the selected type as well as format and add them to the transported data.
+        let selectedFormatInfo = $("#formatSelection").find("li[class='active']").find("a").attr("class").split("_");
+        let selectedFormatType = selectedFormatInfo[0];
+        let selectedFormat = selectedFormatInfo[1];
+
+        if (selectedFormatType === "video") {
+            data.videoFormat = selectedFormat;
+        } else {
+            data.audioFormat = selectedFormat;
+        }
 
         //input.value = "";
 
+        // Ajax for sending the information to the server.
         fetch(".", {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             },
-            body: data
+            body: JSON.stringify(data)
         })
             .then(function (response) {
                 return response.json();
@@ -41,13 +53,13 @@ window.addEventListener("load", function () {
         .build();
 
     let start = async function () {
-        try {
+        //try {
             await connection.start();
             console.log("connected");
-        } catch (err) {
-            console.log(err);
-            setTimeout(() => start(), 5000);
-        }
+        //} catch (err) {
+        //    console.log(err);
+        //    setTimeout(() => start(), 5000);
+        //}
     }
 
     connection.onclose(async () => {
