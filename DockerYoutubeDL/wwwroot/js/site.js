@@ -36,6 +36,8 @@ window.addEventListener("load", function () {
             .then(function (value) {
                 if (value.success === true) {
                     console.log(value);
+                    hideNoFiles();
+                    addListHeader(value.taskIdentifier, value.url);
                 }
                 else {
                     console.log(value);
@@ -44,6 +46,14 @@ window.addEventListener("load", function () {
             .catch(function (error) {
                 console.log(error);
             });
+
+        let hideNoFiles = function () {
+            $("#filesEmpty").attr("hidden", true);
+        }
+
+        let addListHeader = function (guid) {
+
+        }
     });
 
     // SignalR code:
