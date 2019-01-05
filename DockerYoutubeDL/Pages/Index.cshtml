@@ -61,31 +61,46 @@
     </div>
 
     <!-- Templates used by JQuery for generating the list of downloadable files -->
-    <div class="panel panel-default" id="templateFileEntry" hidden="hidden">
-        <div class="panel-heading" role="tab" id="templateHeading">
-            <h4 class="panel-title">
+    <div hidden="hidden">
+        <div class="panel panel-default" id="templateFileEntry">
+            <div class="panel-heading" role="tab" id="templateHeading">
                 <div class="listHeader">
-                    <a role="button" data-toggle="collapse" data-parent="#templateHeading" href="#templateBody">
-                        <span class="glyphicon glyphicon-chevron-down"></span>
-                        PLACEHOLDER
-                    </a>
-                    <div hidden="hidden" id="templateContainerButtonDownload">
-                        <a href="#" class="btn btn-primary btn-sm" style="color:white">Download</a>
+                    <h4 class="panel-title">
+                        <a role="button" data-toggle="collapse" data-parent="#templateHeading" href="#templateBody">
+                            <span class="glyphicon glyphicon-chevron-down"></span>
+                            PLACEHOLDER
+                        </a>
+                    </h4>
+                    <div id="templateContainerDownloadInfo">
+                        <!-- Container for any information that should be displayed to the user on the right side. -->
+                        <div id="templateContainerDownloadInfoText" hidden="hidden">
+                            <div class="listHeader">
+                                <div style="vertical-align:middle" class="infoTextContainer">PLACEHOLDER</div>
+                                <img src="~/images/loading.gif" class="pull-right loadingGif" />
+                            </div>
+                        </div>
+                        <div id="templateContainerDownloadInfoProgress" class="downloadInfo" hidden="hidden">
+                            <div class="progress">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:1%;">0%</div>
+                            </div>
+                        </div>
+                        <div id="templateContainerDownloadInfoButtonDownload" hidden="hidden">
+                            <a href="#" class="btn btn-primary btn-sm" style="color:white">Download</a>
+                        </div>
                     </div>
-                    <img src="~/images/loading.gif" id="templateLoading" hidden="hidden" />
-                    <div id="templateMessageToUser" style="vertical-align:middle">Waiting in queue...</div>
                 </div>
-            </h4>
-        </div>
-        <div id="templateBody" class="panel-collapse collapse" role="tabpanel">
-            <div class="panel-body">
-                <ul class="list-group">
-                    <!-- TemplateFileSubEntries can be added here -->
-                </ul>
+            </div>
+            <div id="templateBody" class="panel-collapse collapse" role="tabpanel">
+                <div class="panel-body">
+                    <ul class="list-group">
+                        <!-- TemplateFileSubEntries can be added here -->
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
 
+    <!-- TemplateSubEntries -->
     <ul hidden="hidden">
         <li class="list-group-item listHeader" id="templateFileSubEntry">
             <span>PLACEHOLDER</span>

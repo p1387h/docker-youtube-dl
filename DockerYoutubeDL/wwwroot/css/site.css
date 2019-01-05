@@ -46,6 +46,7 @@ body {
 }
 
 .listHeader {
+    height: 2em;
     display: flex;
     align-items: center;
     justify-content: space-between
@@ -53,4 +54,17 @@ body {
 
 .listHeader > a {
     color: black
+}
+
+.loadingGif {
+    height: 1.75em;
+    margin-left: 10px;
+}
+
+.downloadInfo {
+    height: 1.5em;
+}
+
+.downloadInfo > .progress {
+    width: 20vw;
 }
