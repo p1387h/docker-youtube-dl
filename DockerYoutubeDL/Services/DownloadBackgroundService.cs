@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using Polly;
 using Newtonsoft.Json;
 using DockerYoutubeDL.Models;
+using System.Text.RegularExpressions;
 
 namespace DockerYoutubeDL.Services
 {
@@ -32,6 +33,9 @@ namespace DockerYoutubeDL.Services
 
         private int _waitTimeSeconds = 10;
         private Policy _notificationPolicy;
+
+        private int _currentIndex = 0;
+        private readonly string _nameDelimiter = "-----------";
 
         public DownloadBackgroundService(
             IDesignTimeDbContextFactory<DownloadContext> factory,
@@ -161,7 +165,7 @@ namespace DockerYoutubeDL.Services
                     "--ffmpeg-location",
                     $"{ffmpegLocation}",
                     "-o",
-                    Path.Combine(downloadFolder, "%(title)s.%(ext)s").ToString(),
+                    Path.Combine(downloadFolder, $"%(id)s{_nameDelimiter}%(title)s.%(ext)s").ToString(),
                 };
 
                 // Depending on the chosen settings, different types of arguments must be
@@ -218,21 +222,31 @@ namespace DockerYoutubeDL.Services
                     };
                     process.OutputDataReceived += (s, e) =>
                     {
-                        var template = JsonConvert.DeserializeObject<YoutubeDlOutputTemplate>(e.Data);
-                        var result = new DownloadResult()
+                        if (e.Data != null)
                         {
-                            IdentifierDownloader = downloadTask.Downloader,
-                            IdentifierDownloadTask = downloadTask.Id,
-                            Index = (string.IsNullOrEmpty(template.playlist_index))? 0 : Int32.Parse(template.playlist_index),
-                            Url = template.webpage_url,
-                            IsPartOfPlaylist = !string.IsNullOrEmpty(template.playlist_index),
-                            Name = template.title
-                        };
+                            var template = JsonConvert.DeserializeObject<YoutubeDlOutputTemplate>(e.Data);
+                            var result = new DownloadResult()
+                            {
+                                IdentifierDownloader = downloadTask.Downloader,
+                                IdentifierDownloadTask = downloadTask.Id,
+                                Index = (string.IsNullOrEmpty(template.playlist_index)) ? 0 : Int32.Parse(template.playlist_index),
+                                Url = template.webpage_url,
+                                IsPartOfPlaylist = !string.IsNullOrEmpty(template.playlist_index),
+                                Name = template.title,
+                                VideoIdentifier = template.id
+                            };
 
-                        db.DownloadResult.Add(result);
-                        db.SaveChanges();
+                            db.DownloadResult.Add(result);
+                            db.SaveChanges();
 
-                        _logger.LogDebug($"Info received: Name={result.Name}, Index={result.Index}, IsPartOfPlaylist={result.IsPartOfPlaylist}");
+                            _logger.LogDebug($"Info received: Name={result.Name}, Index={result.Index}, IsPartOfPlaylist={result.IsPartOfPlaylist}");
+
+                            Task.Run(async () => { await this.NotifyClientAboutReceivedDownloadInformationAsync(result); });
+                        }
+                        else
+                        {
+                            _logger.LogDebug("Received info data was null.");
+                        }
                     };
 
                     process.Start();
@@ -268,14 +282,50 @@ namespace DockerYoutubeDL.Services
 
                 process.Exited += (s, e) =>
                 {
+                    // The last download of a playlist does not trigger the notification of the output.
+                    // A single download does that not as well but must keep the default index.
+                    if (_currentIndex > 0)
+                    {
+                        _currentIndex++;
+                    }
+                    Task.Run(async () => await this.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, _currentIndex));
+
                     resetEvent.Set();
                 };
                 process.OutputDataReceived += (s, e) =>
                 {
-                    _logger.LogDebug(e.Data);
-                };
+                    if (e.Data != null)
+                    {
+                        _logger.LogDebug(e.Data);
 
-                await this.NotifyClientAboutStartedDownloadAsync(downloadTaskId);
+                        var regexVideoDownloadPlaylist = new Regex(@"^\[download\] Downloading video (?<currentIndex>[0-9]+) of [0-9]+$");
+                        var regexVideoWebPage = new Regex(@"^\[youtube\] (?<videoIdentifier>.+): Downloading webpage$");
+                        var matchVideoDownloadPlaylist = regexVideoDownloadPlaylist.Match(e.Data);
+                        var matchVideoWebPage = regexVideoWebPage.Match(e.Data);
+
+                        if (matchVideoDownloadPlaylist.Success)
+                        {
+                            var currentIndex = Int32.Parse(matchVideoDownloadPlaylist.Groups["currentIndex"].Value);
+                            
+                            // Playlist start at index 1. Single downloads do not contain the tested regex.
+                            if (currentIndex - 1 > 0)
+                            {
+                                Task.Run(async () => await this.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, _currentIndex - 1));
+                                Task.Run(async () => await this.MarkDownloadResultAsDownloadedAsync(downloadTaskId, _currentIndex - 1));
+                            }
+
+                            _currentIndex = currentIndex;
+                        }
+                        else if (matchVideoWebPage.Success)
+                        {
+                            Task.Run(async () => await this.NotifyClientAboutStartedDownloadAsync(downloadTaskId, _currentIndex));
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Received download data was null.");
+                    }
+                };
 
                 process.Start();
                 // Enables the asynchronus callback function to receive the redirected data.
@@ -286,8 +336,6 @@ namespace DockerYoutubeDL.Services
                 _logger.LogDebug("Waiting for the main download process to finish...");
                 resetEvent.WaitOne();
                 _logger.LogDebug($"Finished downloading files.");
-
-                await this.NotifyClientAboutFinishedDownloadAsync(downloadTaskId);
             }
             catch (Exception e)
             {
@@ -301,6 +349,7 @@ namespace DockerYoutubeDL.Services
                 // Remove download task in order to not download it again.
                 // If not removed this would cause an endless loop.
                 await this.RemoveDownloadTaskAsync(downloadTaskId);
+                _currentIndex = 0;
             }
         }
 
@@ -315,23 +364,53 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task NotifyClientAboutStartedDownloadAsync(Guid downloadTaskId)
+        private async Task NotifyClientAboutReceivedDownloadInformationAsync(DownloadResult downloadResult)
         {
             using (var db = _factory.CreateDbContext(new string[0]))
             {
-                var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
+                var client = _hub.Clients.Client(_container.StoredClients[downloadResult.IdentifierDownloader]);
 
-                _logger.LogDebug($"Notifying client about the started download task with id={downloadTaskId}.");
+                _logger.LogDebug($"Notifying client about the received download info for result with id={downloadResult.Id}.");
 
-                // Notify the matching client about the started download.
+                // Notify the matching client about the received download information.
                 await _notificationPolicy.ExecuteAsync(
-                    (context) => client.SendAsync(nameof(IUpdateClient.DownloadStarted), downloadTaskId),
+                    (context) => client.SendAsync(nameof(IUpdateClient.ReceivedDownloadInfo), downloadResult),
                     new Dictionary<string, object>()
                     {
-                        { "errorMessage", $"Error while notifying user {downloadTask.Downloader} about the started download." }
+                        { "errorMessage", $"Error while notifying user {downloadResult.IdentifierDownloader} about the received information." }
                     }
                 );
+            }
+        }
+
+        private async Task NotifyClientAboutStartedDownloadAsync(Guid downloadTaskId, int index)
+        {
+            using (var db = _factory.CreateDbContext(new string[0]))
+            {
+                try
+                {
+                    var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
+                    var downloadResultId = db.DownloadResult
+                        .Single(x => x.IdentifierDownloadTask == downloadTaskId && x.Index == index)
+                        .Id;
+
+                    var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
+
+                    _logger.LogDebug($"Notifying client about the started download task with id={downloadTaskId}, result.id={downloadResultId}.");
+
+                    // Notify the matching client about the started download.
+                    await _notificationPolicy.ExecuteAsync(
+                        (context) => client.SendAsync(nameof(IUpdateClient.DownloadStarted), downloadTaskId, downloadResultId),
+                        new Dictionary<string, object>()
+                        {
+                            { "errorMessage", $"Error while notifying user {downloadTask.Downloader} about the started download result id={downloadResultId}." }
+                        }
+                    );
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, $"Error while notifying the user of {downloadTaskId} about the started download index={index}.");
+                }
             }
         }
 
@@ -355,47 +434,63 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task NotifyClientAboutFinishedDownloadAsync(Guid downloadTaskId)
+        private async Task NotifyClientAboutFinishedDownloadAsync(Guid downloadTaskId, int index)
         {
             using (var db = _factory.CreateDbContext(new string[0]))
             {
-                var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadTask.Downloader, downloadTask.Id);
-                var files = Directory.GetFiles(downloadFolder);
-                var generatedResults = new List<DownloadResult>();
-
-                // Multiple files can be downloaded at once (playlists etc.)
-                foreach (var filePath in files)
+                try
                 {
-                    var result = new DownloadResult()
+                    var downloadResult = db.DownloadResult.Single(x => x.IdentifierDownloadTask == downloadTaskId && x.Index == index);
+                    var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadResult.IdentifierDownloader, downloadResult.IdentifierDownloadTask);
+
+                    // Find the downloaded file.
+                    foreach (string filePath in Directory.GetFiles(downloadFolder))
                     {
-                        PathToFile = filePath,
-                        IdentifierDownloader = downloadTask.Downloader,
-                        IdentifierDownloadTask = downloadTask.Id
-                    };
+                        var videoIdentifier = Path.GetFileNameWithoutExtension(filePath).Split(_nameDelimiter)[0];
 
-                    // Keep track of generated instances for notifications. Must be done since the 
-                    // entries receive their respective id AFTER the save function was called.
-                    generatedResults.Add(result);
-                    db.DownloadResult.Add(result);
-                }
-
-                // Notify the matching client for each downloaded file.
-                var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
-                foreach (var result in generatedResults)
-                {
-                    _logger.LogDebug($"Notifying client about result with id={result.Id}.");
-
-                    await _notificationPolicy.ExecuteAsync(
-                        (context) => client.SendAsync(nameof(IUpdateClient.DownloadFinished), result.IdentifierDownloadTask, result.Id),
-                        new Dictionary<string, object>()
+                        if (videoIdentifier.Equals(downloadResult.VideoIdentifier))
                         {
-                            { "errorMessage", $"Error while notifying user {downloadTask.Downloader} about the finished download." }
-                        }
-                    );
-                }
+                            var client = _hub.Clients.Client(_container.StoredClients[downloadResult.IdentifierDownloader]);
 
-                await db.SaveChangesAsync();
+                            // Set the file path in order to retrieve the file later on.
+                            downloadResult.PathToFile = filePath;
+
+                            _logger.LogDebug($"Notifying client about result with id={downloadResult.Id}.");
+
+                            await _notificationPolicy.ExecuteAsync(
+                                (context) => client.SendAsync(nameof(IUpdateClient.DownloadFinished), downloadResult.IdentifierDownloadTask, downloadResult.Id),
+                                new Dictionary<string, object>()
+                                {
+                                    { "errorMessage", $"Error while notifying user {downloadResult.IdentifierDownloader} about the finished download." }
+                                }
+                            );
+                        }
+                    }
+
+                    await db.SaveChangesAsync();
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, $"Error while notifying the user of {downloadTaskId} about the finished download.");
+                }
+            }
+        }
+
+        private async Task MarkDownloadResultAsDownloadedAsync(Guid downloadTaskId, int index)
+        {
+            using (var db = _factory.CreateDbContext(new string[0]))
+            {
+                try
+                {
+                    var downloadResult = db.DownloadResult.Single(x => x.IdentifierDownloadTask == downloadTaskId && x.Index == index);
+                    downloadResult.WasDownloaded = true;
+
+                    await db.SaveChangesAsync();
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, $"Error while Marking the index {index} of {downloadTaskId} as finished.");
+                }
             }
         }
     }

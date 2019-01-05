@@ -114,13 +114,17 @@ $(document).ready(function () {
         fileEntry.find("#messageToUser_" + guid).text("Download failed. See the logs for details.").show();
     });
 
-    connection.on("DownloadStarted", function (taskIdentifier) {
-        console.log({ state: "Started", task: taskIdentifier });
+    connection.on("DownloadStarted", (taskIdentifier, taskResultIdentifier) => {
+        console.log({ state: "Started", task: taskIdentifier, result: taskResultIdentifier });
 
         let guid = taskIdentifier;
         let fileEntry = $("#fileEntry_" + guid);
         fileEntry.find("#messageToUser_" + guid).hide();
         fileEntry.find("#loading_" + guid).show();
+    });
+
+    connection.on("ReceivedDownloadInfo", (downloadResult) => {
+        console.log({ state: "Info received", result: downloadResult });
     });
 
     connection.on("Ping", () => {

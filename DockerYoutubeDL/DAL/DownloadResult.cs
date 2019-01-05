@@ -14,6 +14,7 @@ namespace DockerYoutubeDL.DAL
         public int Index { get; set; }
         public bool WasDownloaded { get; set; }
         public bool IsPartOfPlaylist { get; set; }
+        public string VideoIdentifier { get; set; }
 
         public Guid IdentifierDownloader { get; set; }
         public Guid IdentifierDownloadTask { get; set; }

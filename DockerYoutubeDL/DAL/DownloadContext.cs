@@ -59,10 +59,10 @@ namespace DockerYoutubeDL.DAL
                 .Property(x => x.Index)
                 .IsRequired();
             modelBuilder.Entity<DownloadResult>()
-                .Property(x => x.WasDownloaded)
+                .Property(x => x.IsPartOfPlaylist)
                 .IsRequired();
             modelBuilder.Entity<DownloadResult>()
-                .Property(x => x.IsPartOfPlaylist)
+                .Property(x => x.VideoIdentifier)
                 .IsRequired();
         }
     }

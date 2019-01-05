@@ -7,6 +7,7 @@ namespace DockerYoutubeDL.Models
 {
     public class YoutubeDlOutputTemplate
     {
+        public string id { get; set; }
         public string webpage_url { get; set; }
         public string playlist_index { get; set; }
         public string title { get; set; }
