@@ -11,5 +11,8 @@ namespace DockerYoutubeDL.SignalR
         Task DownloadFinished(Guid taskIdentifier, Guid taskResultIdentifier);
 
         Task DownloadFailed(Guid taskIdentifier);
+
+        // Test if a client disconnected or just downloaded a file.
+        Task Ping();
     }
 }

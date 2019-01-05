@@ -115,5 +115,9 @@ window.addEventListener("load", function () {
         fileEntry.find("#loading_" + guid).hide();
     });
 
+    connection.on("Ping", function () {
+        connection.invoke("Pong");
+    })
+
     start();
 });

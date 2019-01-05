@@ -62,19 +62,44 @@ namespace DockerYoutubeDL.SignalR
             // Ensures that the server frees memory and does not keep allocating space.
             if(_config.GetValue<bool>("DeleteDownloadsOnDisconnect"))
             {
-                _logger.LogDebug($"Deleting entries of user {name}");
+                await Task.Run(async () =>
+                {
+                    try
+                    {
+                        _logger.LogDebug($"Giving user {name} time to reconnect...");
 
-                await this.DeleteDownloadEntriesAsync(identifier);
+                        await Task.Delay(TimeSpan.FromSeconds(10));
+                        await Clients.Client(_container.StoredClients[identifier]).Ping();
+                    } catch(Exception e)
+                    {
+                        _logger.LogDebug($"User {name} failed to reconnect.");
+
+                        await this.DeleteDownloadEntriesAsync(identifier);
+                    }
+                });
             }
 
             await base.OnDisconnectedAsync(exception);
         }
 
+        private async Task Pong()
+        {
+            _logger.LogDebug($"User {Context.User.Identity.Name} replied to the ping.");
+        }
+
         private async Task DeleteDownloadEntriesAsync(Guid identifier)
         {
+            _logger.LogDebug($"Deleting entries of user {identifier}.");
+
             // Remove any folders / downloads of the user.
-            var folderPath = _pathGenerator.GenerateDownloadFolderPath(identifier);
-            Directory.Delete(folderPath, true);
+            try
+            {
+                var folderPath = _pathGenerator.GenerateDownloadFolderPath(identifier);
+                Directory.Delete(folderPath, true);
+            } catch(IOException e)
+            {
+                _logger.LogError(e, $"Error while removing downloads of the user {identifier}:");
+            }
 
             // Entries of the user must be removed from the db.
             var toDeleteTasks = _context.DownloadTask
