@@ -4,9 +4,6 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace DockerYoutubeDL.SignalR
@@ -18,18 +15,20 @@ namespace DockerYoutubeDL.SignalR
         private DownloadPathGenerator _pathGenerator;
         private IConfiguration _config;
         private DownloadContext _context;
+        private DownloadBackgroundService _downloadService;
 
-        private int _waitTimeReconnectSeconds = 10;
+        private int _waitTimeReconnectSeconds = 5;
 
         public UpdateHub(
             ILogger<UpdateHub> logger, 
             UpdateClientContainer container, 
             DownloadPathGenerator pathGenerator, 
             IConfiguration config,
-            DownloadContext context)
+            DownloadContext context,
+            DownloadBackgroundService downloadService)
         {
             if (logger == null || container  == null || pathGenerator == null || 
-                config == null || context == null)
+                config == null || context == null || downloadService == null)
             {
                 throw new ArgumentException();
             }
@@ -39,6 +38,7 @@ namespace DockerYoutubeDL.SignalR
             _pathGenerator = pathGenerator;
             _config = config;
             _context = context;
+            _downloadService = downloadService;
         }
 
         public override Task OnConnectedAsync()
@@ -76,7 +76,7 @@ namespace DockerYoutubeDL.SignalR
                     {
                         _logger.LogDebug($"User {name} failed to reconnect.");
 
-                        await this.DeleteDownloadEntriesAsync(identifier);
+                        await _downloadService.HandleDisconnectAsync(identifier);
                     }
                 });
             }
@@ -87,31 +87,6 @@ namespace DockerYoutubeDL.SignalR
         public async Task Pong()
         {
             _logger.LogDebug($"User {Context.User.Identity.Name} replied to the ping.");
-        }
-
-        private async Task DeleteDownloadEntriesAsync(Guid identifier)
-        {
-            _logger.LogDebug($"Deleting entries of user {identifier}.");
-
-            // Remove any folders / downloads of the user.
-            try
-            {
-                var folderPath = _pathGenerator.GenerateDownloadFolderPath(identifier);
-                Directory.Delete(folderPath, true);
-            } catch(IOException e)
-            {
-                _logger.LogError(e, $"Error while removing downloads of the user {identifier}:");
-            }
-
-            // Entries of the user must be removed from the db.
-            var toDeleteTasks = _context.DownloadTask
-                .Where(x => x.Downloader == identifier);
-            var toDeleteResults = _context.DownloadResult
-                .Where(x => x.IdentifierDownloader == identifier);
-            _context.DownloadTask.RemoveRange(toDeleteTasks);
-            _context.DownloadResult.RemoveRange(toDeleteResults);
-
-            await _context.SaveChangesAsync();
         }
     }
 }

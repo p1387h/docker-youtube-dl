@@ -86,7 +86,7 @@ $(document).ready(function () {
             console.log("connected");
         } catch (err) {
             console.log(err);
-            setTimeout(() => start(), 5000);
+            setTimeout(() => start(), 2000);
         }
     }
 

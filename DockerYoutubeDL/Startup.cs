@@ -52,7 +52,8 @@ namespace DockerYoutubeDL
 
             // Download background service:
             services.AddSingleton<IDesignTimeDbContextFactory<DownloadContext>, DownloadContextFactory>();
-            services.AddHostedService<DownloadBackgroundService>();
+            services.AddSingleton<DownloadBackgroundService>();
+            services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, DownloadBackgroundService>((provider) => provider.CreateScope().ServiceProvider.GetRequiredService<DownloadBackgroundService>());
 
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
         }
