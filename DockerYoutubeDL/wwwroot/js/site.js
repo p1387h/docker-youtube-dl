@@ -2,7 +2,7 @@
 // for details on configuring this project to bundle and minify static web assets.
 
 // Write your Javascript code.
-window.addEventListener("load", function () {
+$(document).ready(function () {
     $("#buttonDownload")[0].addEventListener("click", function () {
         let input = $("#inputDownload")[0];
         let url = input.value;
@@ -67,7 +67,8 @@ window.addEventListener("load", function () {
             fileEntry.find("#templateHeading").attr("id", "heading_" + guid);
             fileEntry.find("a").first().text(" " + url).attr({ "data-toggle": "", href: "#body_" + guid }).prepend(glyphiconMinus());
             fileEntry.find("#templateContainerButtonDownload").attr("id", "containerButtonDownload_" + guid);
-            fileEntry.find("#templateLoading").attr({ hidden: false, id: "loading_" + guid });
+            fileEntry.find("#templateWaitingInQueue").attr("id", "waitingInQueue_" + guid);
+            fileEntry.find("#templateLoading").attr("id", "loading_" + guid);
 
             // Body:
             fileEntry.find("#templateBody").attr("id", "body_" + guid);
@@ -115,9 +116,19 @@ window.addEventListener("load", function () {
         fileEntry.find("#loading_" + guid).hide();
     });
 
-    connection.on("Ping", function () {
+    connection.on("DownloadStarted", function (taskIdentifier) {
+        console.log({ state: "Started", task: taskIdentifier });
+
+        let guid = taskIdentifier;
+        let fileEntry = $("#fileEntry_" + guid);
+        fileEntry.find("#waitingInQueue_" + guid).hide();
+        fileEntry.find("#loading_" + guid).attr("hidden", false);
+    });
+
+    connection.on("Ping", () => {
+        console.log("Replying to ping");
         connection.invoke("Pong");
-    })
+    });
 
     start();
 });

@@ -19,6 +19,8 @@ namespace DockerYoutubeDL.SignalR
         private IConfiguration _config;
         private DownloadContext _context;
 
+        private int _waitTimeReconnectSeconds = 10;
+
         public UpdateHub(
             ILogger<UpdateHub> logger, 
             UpdateClientContainer container, 
@@ -68,7 +70,7 @@ namespace DockerYoutubeDL.SignalR
                     {
                         _logger.LogDebug($"Giving user {name} time to reconnect...");
 
-                        await Task.Delay(TimeSpan.FromSeconds(10));
+                        await Task.Delay(TimeSpan.FromSeconds(_waitTimeReconnectSeconds));
                         await Clients.Client(_container.StoredClients[identifier]).Ping();
                     } catch(Exception e)
                     {
@@ -82,7 +84,7 @@ namespace DockerYoutubeDL.SignalR
             await base.OnDisconnectedAsync(exception);
         }
 
-        private async Task Pong()
+        public async Task Pong()
         {
             _logger.LogDebug($"User {Context.User.Identity.Name} replied to the ping.");
         }

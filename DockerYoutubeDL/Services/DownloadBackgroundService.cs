@@ -114,6 +114,8 @@ namespace DockerYoutubeDL.Services
                         _logger.LogDebug(e.Data);
                     };
 
+                    await this.NotifyClientAboutStartedDownloadAsync(downloadTaskId);
+
                     process.Start();
                     // Enables the asynchronus callback function to receive the redirected data.
                     process.BeginOutputReadLine();
@@ -215,6 +217,19 @@ namespace DockerYoutubeDL.Services
                 db.DownloadTask.Remove(downloadTask);
 
                 await db.SaveChangesAsync();
+            }
+        }
+
+        private async Task NotifyClientAboutStartedDownloadAsync(Guid downloadTaskId)
+        {
+            using (var db = _factory.CreateDbContext(new string[0]))
+            {
+                var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
+                var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
+
+                _logger.LogDebug($"Notifying client about the started download task with id={downloadTaskId}.");
+
+                await client.SendAsync(nameof(IUpdateClient.DownloadStarted), downloadTaskId);
             }
         }
 
