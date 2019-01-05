@@ -7,13 +7,11 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Polly;
 using Newtonsoft.Json;
 using DockerYoutubeDL.Models;
 using System.Text.RegularExpressions;
@@ -28,29 +26,25 @@ namespace DockerYoutubeDL.Services
         private IDesignTimeDbContextFactory<DownloadContext> _factory;
         private ILogger _logger;
         private IConfiguration _config;
-        private IHubContext<UpdateHub> _hub;
-        private UpdateClientContainer _container;
         private DownloadPathGenerator _pathGenerator;
+        private NotificationService _notification;
 
         private int _waitTimeSeconds = 10;
-        private Policy _notificationPolicy;
 
         private string _currentDownloadVideoIdentifier = null;
         // Percentages are 0-100.
         private double _prevPercentage = 0;
         private double _percentageMinDifference = 10;
-        private readonly string _nameDelimiter = "-----------";
 
         public DownloadBackgroundService(
             IDesignTimeDbContextFactory<DownloadContext> factory,
             ILogger<DownloadBackgroundService> logger,
             IConfiguration config,
-            IHubContext<UpdateHub> hub,
-            UpdateClientContainer container,
-            DownloadPathGenerator pathGenerator)
+            DownloadPathGenerator pathGenerator,
+            NotificationService notification)
         {
             if (factory == null || logger == null || config == null ||
-                hub == null || container == null || pathGenerator == null)
+                pathGenerator == null || notification == null)
             {
                 throw new ArgumentException();
             }
@@ -58,16 +52,8 @@ namespace DockerYoutubeDL.Services
             _factory = factory;
             _logger = logger;
             _config = config;
-            _hub = hub;
-            _container = container;
             _pathGenerator = pathGenerator;
-
-            // The same policy is used for all notification attempts.
-            _notificationPolicy = Policy.Handle<Exception>()
-                .WaitAndRetryAsync(5, (count) => TimeSpan.FromSeconds(count + 1), (e, retryCount, context) =>
-                {
-                    _logger.LogError(e, "Polly retry error: " + context["errorMessage"] as string);
-                });
+            _notification = notification;
         }
 
         protected async override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -169,7 +155,7 @@ namespace DockerYoutubeDL.Services
                     "--ffmpeg-location",
                     $"{ffmpegLocation}",
                     "-o",
-                    Path.Combine(downloadFolder, $"%(id)s{_nameDelimiter}%(title)s.%(ext)s").ToString(),
+                    Path.Combine(downloadFolder, $"%(id)s{_pathGenerator.NameDilimiter}%(title)s.%(ext)s").ToString(),
                 };
 
                 // Depending on the chosen settings, different types of arguments must be
@@ -245,7 +231,7 @@ namespace DockerYoutubeDL.Services
 
                             _logger.LogDebug($"Info received: Name={result.Name}, Index={result.Index}, IsPartOfPlaylist={result.IsPartOfPlaylist}");
 
-                            Task.Run(async () => { await this.NotifyClientAboutReceivedDownloadInformationAsync(result); });
+                            Task.Run(async () => { await _notification.NotifyClientAboutReceivedDownloadInformationAsync(result); });
                         }
                         else
                         {
@@ -288,7 +274,7 @@ namespace DockerYoutubeDL.Services
                 {
                     // The last download of a playlist does not trigger the notification of the output
                     // (Same goes for a simple download).
-                    Task.Run(async () => await this.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
+                    Task.Run(async () => await _notification.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
                     Task.Run(async () => await this.MarkDownloadResultAsDownloadedAsync(downloadTaskId, _currentDownloadVideoIdentifier));
 
                     resetEvent.Set();
@@ -310,13 +296,13 @@ namespace DockerYoutubeDL.Services
 
                         if (matchVideoDownloadPlaylist.Success)
                         {
-                            Task.Run(async () => await this.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
+                            Task.Run(async () => await _notification.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
                             Task.Run(async () => await this.MarkDownloadResultAsDownloadedAsync(downloadTaskId, _currentDownloadVideoIdentifier));
                         }
                         else if (matchVideoWebPage.Success)
                         {
                             _currentDownloadVideoIdentifier = matchVideoWebPage.Groups["videoIdentifier"].Value;
-                            Task.Run(async () => await this.NotifyClientAboutStartedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
+                            Task.Run(async () => await _notification.NotifyClientAboutStartedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
                         }
                         else if(matchVideoDownloadProgress.Success)
                         {
@@ -327,12 +313,12 @@ namespace DockerYoutubeDL.Services
                             if(percentageDouble - _prevPercentage >= _percentageMinDifference)
                             {
                                 _prevPercentage = percentageDouble;
-                                Task.Run(async () => await this.NotifyClientAboutDownloadProgressAsync(downloadTaskId, _currentDownloadVideoIdentifier, percentageDouble));
+                                Task.Run(async () => await _notification.NotifyClientAboutDownloadProgressAsync(downloadTaskId, _currentDownloadVideoIdentifier, percentageDouble));
                             }
                         }
                         else if(matchVideoConverting.Success)
                         {
-                            Task.Run(async () => await this.NotifyClientAboutDownloadConversionAsync(downloadTaskId, _currentDownloadVideoIdentifier));
+                            Task.Run(async () => await _notification.NotifyClientAboutDownloadConversionAsync(downloadTaskId, _currentDownloadVideoIdentifier));
                         }
                     }
                     else
@@ -356,7 +342,7 @@ namespace DockerYoutubeDL.Services
                 _logger.LogError(e, "Main download process threw an exception:");
 
                 resetEvent.Set();
-                await this.NotifyClientAboutFailedDownloadAsync(downloadTaskId);
+                await _notification.NotifyClientAboutFailedDownloadAsync(downloadTaskId);
             }
             finally
             {
@@ -379,118 +365,6 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task NotifyClientAboutReceivedDownloadInformationAsync(DownloadResult downloadResult)
-        {
-            using (var db = _factory.CreateDbContext(new string[0]))
-            {
-                var client = _hub.Clients.Client(_container.StoredClients[downloadResult.IdentifierDownloader]);
-
-                _logger.LogDebug($"Notifying client about the received download info for result with id={downloadResult.Id}.");
-
-                // Notify the matching client about the received download information.
-                await _notificationPolicy.ExecuteAsync(
-                    (context) => client.SendAsync(nameof(IUpdateClient.ReceivedDownloadInfo), downloadResult),
-                    new Dictionary<string, object>()
-                    {
-                        { "errorMessage", $"Error while notifying user {downloadResult.IdentifierDownloader} about the received information." }
-                    }
-                );
-            }
-        }
-
-        private async Task NotifyClientAboutStartedDownloadAsync(Guid downloadTaskId, string videoIdentifier)
-        {
-            using (var db = _factory.CreateDbContext(new string[0]))
-            {
-                try
-                {
-                    var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                    var downloadResultId = db.DownloadResult
-                        .First(x => x.IdentifierDownloadTask == downloadTaskId && x.VideoIdentifier == videoIdentifier)
-                        .Id;
-
-                    var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
-
-                    _logger.LogDebug($"Notifying client about the started download task with id={downloadTaskId}, result.id={downloadResultId}.");
-
-                    // Notify the matching client about the started download.
-                    await _notificationPolicy.ExecuteAsync(
-                        (context) => client.SendAsync(nameof(IUpdateClient.DownloadStarted), downloadTaskId, downloadResultId),
-                        new Dictionary<string, object>()
-                        {
-                            { "errorMessage", $"Error while notifying user {downloadTask.Downloader} about the started download result id={downloadResultId}." }
-                        }
-                    );
-                }
-                catch (Exception e)
-                {
-                    _logger.LogError(e, $"Error while notifying the user of {downloadTaskId} about the started download video={videoIdentifier}.");
-                }
-            }
-        }
-
-        private async Task NotifyClientAboutFailedDownloadAsync(Guid downloadTaskId)
-        {
-            using (var db = _factory.CreateDbContext(new string[0]))
-            {
-                var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
-
-                _logger.LogDebug($"Notifying client about failed download task with id={downloadTaskId}.");
-
-                // Notify the matching client about the failure.
-                await _notificationPolicy.ExecuteAsync(
-                    (context) => client.SendAsync(nameof(IUpdateClient.DownloadFailed), downloadTaskId),
-                    new Dictionary<string, object>()
-                    {
-                        { "errorMessage", $"Error while notifying user {downloadTask.Downloader} about the failed download." }
-                    }
-                );
-            }
-        }
-
-        private async Task NotifyClientAboutFinishedDownloadAsync(Guid downloadTaskId, string videoIdentifier)
-        {
-            using (var db = _factory.CreateDbContext(new string[0]))
-            {
-                try
-                {
-                    var downloadResult = db.DownloadResult.First(x => x.IdentifierDownloadTask == downloadTaskId && x.VideoIdentifier == videoIdentifier);
-                    var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadResult.IdentifierDownloader, downloadResult.IdentifierDownloadTask);
-
-                    // Find the downloaded file.
-                    foreach (string filePath in Directory.GetFiles(downloadFolder))
-                    {
-                        var fileVideoIdentifier = Path.GetFileNameWithoutExtension(filePath).Split(_nameDelimiter)[0];
-
-                        if (fileVideoIdentifier.Equals(downloadResult.VideoIdentifier))
-                        {
-                            var client = _hub.Clients.Client(_container.StoredClients[downloadResult.IdentifierDownloader]);
-
-                            // Set the file path in order to retrieve the file later on.
-                            downloadResult.PathToFile = filePath;
-
-                            _logger.LogDebug($"Notifying client about result with id={downloadResult.Id}.");
-
-                            await _notificationPolicy.ExecuteAsync(
-                                (context) => client.SendAsync(nameof(IUpdateClient.DownloadFinished), downloadResult.IdentifierDownloadTask, downloadResult.Id),
-                                new Dictionary<string, object>()
-                                {
-                                    { "errorMessage", $"Error while notifying user {downloadResult.IdentifierDownloader} about the finished download." }
-                                }
-                            );
-                        }
-                    }
-
-                    await db.SaveChangesAsync();
-                }
-                catch (Exception e)
-                {
-                    _logger.LogError(e, $"Error while notifying the user of {downloadTaskId} about the finished download.");
-                }
-            }
-        }
-
         private async Task MarkDownloadResultAsDownloadedAsync(Guid downloadTaskId, string videoIdentifier)
         {
             using (var db = _factory.CreateDbContext(new string[0]))
@@ -505,58 +379,6 @@ namespace DockerYoutubeDL.Services
                 catch (Exception e)
                 {
                     _logger.LogError(e, $"Error while Marking the video {videoIdentifier} of {downloadTaskId} as finished.");
-                }
-            }
-        }
-
-        private async Task NotifyClientAboutDownloadProgressAsync(Guid downloadTaskId, string videoIdentifier, double percentage)
-        {
-            using (var db = _factory.CreateDbContext(new string[0]))
-            {
-                try
-                {
-                    var downloadResult = db.DownloadResult.First(x => x.IdentifierDownloadTask == downloadTaskId && x.VideoIdentifier == videoIdentifier);
-                    var client = _hub.Clients.Client(_container.StoredClients[downloadResult.IdentifierDownloader]);
-
-                    _logger.LogDebug($"Notifying client about progress {percentage} with id={downloadResult.Id}.");
-
-                    await _notificationPolicy.ExecuteAsync(
-                        (context) => client.SendAsync(nameof(IUpdateClient.DownloadProgress), downloadResult.IdentifierDownloadTask, downloadResult.Id, percentage),
-                        new Dictionary<string, object>()
-                        {
-                            { "errorMessage", $"Error while notifying user {downloadResult.IdentifierDownloader} about the progresss {percentage}." }
-                        }
-                    );
-                }
-                catch (Exception e)
-                {
-                    _logger.LogError(e, $"Error while notifying the user of {downloadTaskId} about the progress {percentage}.");
-                }
-            }
-        }
-
-        private async Task NotifyClientAboutDownloadConversionAsync(Guid downloadTaskId, string videoIdentifier)
-        {
-            using (var db = _factory.CreateDbContext(new string[0]))
-            {
-                try
-                {
-                    var downloadResult = db.DownloadResult.First(x => x.IdentifierDownloadTask == downloadTaskId && x.VideoIdentifier == videoIdentifier);
-                    var client = _hub.Clients.Client(_container.StoredClients[downloadResult.IdentifierDownloader]);
-
-                    _logger.LogDebug($"Notifying client about conversion with id={downloadResult.Id}.");
-
-                    await _notificationPolicy.ExecuteAsync(
-                        (context) => client.SendAsync(nameof(IUpdateClient.DownloadConversion), downloadResult.IdentifierDownloadTask, downloadResult.Id),
-                        new Dictionary<string, object>()
-                        {
-                            { "errorMessage", $"Error while notifying user {downloadResult.IdentifierDownloader} about the conversion of {videoIdentifier}." }
-                        }
-                    );
-                }
-                catch (Exception e)
-                {
-                    _logger.LogError(e, $"Error while notifying the user of {downloadTaskId} about the conversion of {videoIdentifier}.");
                 }
             }
         }

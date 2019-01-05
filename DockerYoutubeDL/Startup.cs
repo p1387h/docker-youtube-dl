@@ -42,6 +42,9 @@ namespace DockerYoutubeDL
             // Component for generating the paths of the download folders:
             services.AddSingleton<DownloadPathGenerator>();
 
+            // Component for notifying the clients:
+            services.AddSingleton<NotificationService>();
+
             // SignalR components:
             services.AddSingleton<UpdateClientContainer>();
             services.AddTransient<UpdateHub>();
