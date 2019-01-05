@@ -17,6 +17,7 @@ using Polly;
 using Newtonsoft.Json;
 using DockerYoutubeDL.Models;
 using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace DockerYoutubeDL.Services
 {
@@ -35,6 +36,9 @@ namespace DockerYoutubeDL.Services
         private Policy _notificationPolicy;
 
         private string _currentDownloadVideoIdentifier = null;
+        // Percentages are 0-100.
+        private double _prevPercentage = 0;
+        private double _percentageMinDifference = 10;
         private readonly string _nameDelimiter = "-----------";
 
         public DownloadBackgroundService(
@@ -297,8 +301,10 @@ namespace DockerYoutubeDL.Services
 
                         var regexVideoDownloadPlaylist = new Regex(@"^\[download\] Downloading video (?<currentIndex>[0-9]+) of [0-9]+$");
                         var regexVideoWebPage = new Regex(@"^\[youtube\] (?<videoIdentifier>.+): Downloading webpage$");
+                        var regexVideoDownloadProgress = new Regex(@"^\[download\]\s\s?(?<percentage>[0-9]+\.[0-9]+)%.*$");
                         var matchVideoDownloadPlaylist = regexVideoDownloadPlaylist.Match(e.Data);
                         var matchVideoWebPage = regexVideoWebPage.Match(e.Data);
+                        var matchVideoDownloadProgress = regexVideoDownloadProgress.Match(e.Data);
 
                         if (matchVideoDownloadPlaylist.Success)
                         {
@@ -309,6 +315,18 @@ namespace DockerYoutubeDL.Services
                         {
                             _currentDownloadVideoIdentifier = matchVideoWebPage.Groups["videoIdentifier"].Value;
                             Task.Run(async () => await this.NotifyClientAboutStartedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
+                        }
+                        else if(matchVideoDownloadProgress.Success)
+                        {
+                            var percentage = matchVideoDownloadProgress.Groups["percentage"].Value;
+                            var percentageDouble = Double.Parse(percentage.Replace(',', '.'), CultureInfo.InvariantCulture);
+
+                            // Do not flood the client with messages.
+                            if(percentageDouble - _prevPercentage >= _percentageMinDifference)
+                            {
+                                _prevPercentage = percentageDouble;
+                                Task.Run(async () => await this.NotifyClientAboutDownloadProgressAsync(downloadTaskId, _currentDownloadVideoIdentifier, percentageDouble));
+                            }
                         }
                     }
                     else
@@ -340,6 +358,7 @@ namespace DockerYoutubeDL.Services
                 // If not removed this would cause an endless loop.
                 await this.RemoveDownloadTaskAsync(downloadTaskId);
                 _currentDownloadVideoIdentifier = null;
+                _prevPercentage = 0;
             }
         }
 
@@ -480,6 +499,32 @@ namespace DockerYoutubeDL.Services
                 catch (Exception e)
                 {
                     _logger.LogError(e, $"Error while Marking the video {videoIdentifier} of {downloadTaskId} as finished.");
+                }
+            }
+        }
+
+        private async Task NotifyClientAboutDownloadProgressAsync(Guid downloadTaskId, string videoIdentifier, double percentage)
+        {
+            using (var db = _factory.CreateDbContext(new string[0]))
+            {
+                try
+                {
+                    var downloadResult = db.DownloadResult.First(x => x.IdentifierDownloadTask == downloadTaskId && x.VideoIdentifier == videoIdentifier);
+                    var client = _hub.Clients.Client(_container.StoredClients[downloadResult.IdentifierDownloader]);
+
+                    _logger.LogDebug($"Notifying client about progress {percentage} with id={downloadResult.Id}.");
+
+                    await _notificationPolicy.ExecuteAsync(
+                        (context) => client.SendAsync(nameof(IUpdateClient.DownloadProgress), downloadResult.IdentifierDownloadTask, downloadResult.Id, percentage),
+                        new Dictionary<string, object>()
+                        {
+                            { "errorMessage", $"Error while notifying user {downloadResult.IdentifierDownloader} about the progresss {percentage}." }
+                        }
+                    );
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, $"Error while notifying the user of {downloadTaskId} about the progress {percentage}.");
                 }
             }
         }

@@ -13,6 +13,8 @@ namespace DockerYoutubeDL.SignalR
         // Id of the task (received when it got queued up) and id of the result corresponding to the task.
         Task DownloadStarted(Guid taskIdentifier, Guid taskResultIdentifier);
 
+        Task DownloadProgress(Guid taskIdentifier, Guid taskResultIdentifier, double percentage);
+
         // Id of the task (received when it got queued up) and id of the result corresponding to the task.
         Task DownloadFinished(Guid taskIdentifier, Guid taskResultIdentifier);
 

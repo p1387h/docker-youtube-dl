@@ -127,6 +127,10 @@ $(document).ready(function () {
         console.log({ state: "Info received", result: downloadResult });
     });
 
+    connection.on("DownloadProgress", (taskIdentifier, resultIdentifier, percentage) => {
+        console.log({ state: "Progress", task: taskIdentifier, result: resultIdentifier, percentage: percentage });
+    });
+
     connection.on("Ping", () => {
         console.log("Replying to ping");
         connection.invoke("Pong");
