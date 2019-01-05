@@ -265,6 +265,8 @@ namespace DockerYoutubeDL.Services
 
                     await client.SendAsync(nameof(IUpdateClient.DownloadFinished), result.IdentifierDownloadTask, result.Id);
                 }
+
+                await db.SaveChangesAsync();
             }
         }
     }

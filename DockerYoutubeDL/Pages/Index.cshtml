@@ -55,8 +55,43 @@
 
 <h2>Files</h2>
 
-<div class="panel-group" id="files" role="tablist">
+<div class="panel-group" id="fileEntries" role="tablist">
     <div id="filesEmpty" class="text-center">
         <h4>No files available.</h4>
     </div>
+
+    <!-- Templates used by JQuery for generating the list of downloadable files -->
+    <div class="panel panel-default" id="templateFileEntry" hidden="hidden">
+        <div class="panel-heading" role="tab" id="templateHeading">
+            <h4 class="panel-title">
+                <div class="listHeader">
+                    <a role="button" data-toggle="collapse" data-parent="#templateHeading" href="#templateBody">
+                        <span class="glyphicon glyphicon-chevron-down"></span>
+                        PLACEHOLDER
+                    </a>
+                    <div hidden="hidden" id="templateContainerButtonDownload">
+                        <a href="#" class="btn btn-primary btn-sm" style="color:white">Download</a>
+                    </div>
+                    <img src="~/images/loading.gif" id="templateLoading" hidden="hidden" />
+                </div>
+            </h4>
+        </div>
+        <div id="templateBody" class="panel-collapse collapse" role="tabpanel">
+            <div class="panel-body">
+                <ul class="list-group">
+                    <!-- TemplateFileSubEntries can be added here -->
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <ul hidden="hidden">
+        <li class="list-group-item listHeader" id="templateFileSubEntry">
+            <span>PLACEHOLDER</span>
+            <div id="templateContainerButtonDownload" hidden="hidden">
+                <a href="#" class="btn btn-primary btn-sm" style="color:white">Download</a>
+            </div>
+            <img src="~/images/loading.gif" id="collapseOneLoading" hidden="hidden" />
+        </li>
+    </ul>
 </div>

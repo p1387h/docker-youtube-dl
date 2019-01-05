@@ -51,8 +51,28 @@ window.addEventListener("load", function () {
             $("#filesEmpty").attr("hidden", true);
         }
 
-        let addListHeader = function (guid) {
+        let chevronDown = function () {
+            return $.parseHTML("<span class=\"glyphicon glyphicon-chevron-down\"></span>");
+        }
 
+        let glyphiconMinus = function () {
+            return $.parseHTML("<span class=\"glyphicon glyphicon-minus\"></span>");
+        }
+
+        let addListHeader = function (guid, url) {
+            let fileEntry = $("#templateFileEntry").clone();
+
+            // Head:
+            fileEntry.attr({ hidden: false, id: "fileEntry_" + guid });
+            fileEntry.find("#templateHeading").attr("id", "heading_" + guid);
+            fileEntry.find("a").first().text(" " + url).attr({ "data-toggle": "", href: "#body_" + guid }).prepend(glyphiconMinus());
+            fileEntry.find("#templateContainerButtonDownload").attr("id", "containerButtonDownload_" + guid);
+            fileEntry.find("#templateLoading").attr({ hidden: false, id: "loading_" + guid });
+
+            // Body:
+            fileEntry.find("#templateBody").attr("id", "body_" + guid);
+
+            fileEntry.prependTo("#fileEntries");
         }
     });
 
@@ -63,13 +83,13 @@ window.addEventListener("load", function () {
         .build();
 
     let start = async function () {
-        //try {
+        try {
             await connection.start();
             console.log("connected");
-        //} catch (err) {
-        //    console.log(err);
-        //    setTimeout(() => start(), 5000);
-        //}
+        } catch (err) {
+            console.log(err);
+            setTimeout(() => start(), 5000);
+        }
     }
 
     connection.onclose(async () => {
@@ -78,10 +98,21 @@ window.addEventListener("load", function () {
 
     connection.on("DownloadFinished", (taskIdentifier, taskResultIdentifier) => {
         console.log({ state: "Finished", task: taskIdentifier, result: taskResultIdentifier });
+
+        let guid = taskIdentifier;
+        let fileEntry = $("#fileEntry_" + guid);
+        fileEntry.find("#loading_" + guid).hide();
+        fileEntry.find("#containerButtonDownload_" + guid).attr("hidden", false)
+            .find("a").attr("href", "./download?taskIdentifier=" + guid + "&taskResultIdentifier=" + taskResultIdentifier);
     });
 
     connection.on("DownloadFailed", (taskIdentifier) => {
         console.log({ state: "Failed", task: taskIdentifier });
+
+        let guid = taskIdentifier;
+        let fileEntry = $("#fileEntry_" + guid);
+        fileEntry.addClass("panel-danger");
+        fileEntry.find("#loading_" + guid).hide();
     });
 
     start();
