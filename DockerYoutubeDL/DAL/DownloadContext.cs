@@ -47,13 +47,22 @@ namespace DockerYoutubeDL.DAL
                 .Property(x => x.Id)
                 .IsRequired();
             modelBuilder.Entity<DownloadResult>()
-                .Property(x => x.PathToFile)
-                .IsRequired();
-            modelBuilder.Entity<DownloadResult>()
                 .Property(x => x.IdentifierDownloader)
                 .IsRequired();
             modelBuilder.Entity<DownloadResult>()
                 .Property(x => x.IdentifierDownloadTask)
+                .IsRequired();
+            modelBuilder.Entity<DownloadResult>()
+                .Property(x => x.Url)
+                .IsRequired();
+            modelBuilder.Entity<DownloadResult>()
+                .Property(x => x.Index)
+                .IsRequired();
+            modelBuilder.Entity<DownloadResult>()
+                .Property(x => x.WasDownloaded)
+                .IsRequired();
+            modelBuilder.Entity<DownloadResult>()
+                .Property(x => x.IsPartOfPlaylist)
                 .IsRequired();
         }
     }

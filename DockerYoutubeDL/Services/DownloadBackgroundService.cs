@@ -14,6 +14,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Polly;
+using Newtonsoft.Json;
+using DockerYoutubeDL.Models;
 
 namespace DockerYoutubeDL.Services
 {
@@ -101,69 +103,45 @@ namespace DockerYoutubeDL.Services
 
         private async Task ExecuteDownloadTaskAsync(Guid downloadTaskId, CancellationToken stoppingToken)
         {
-            var processInfo = await this.GenerateProcessStartInfoAsync(downloadTaskId);
+            var infoProcessInfo = await this.GenerateInfoProcessStartInfoAsync(downloadTaskId);
+            var mainProcessInfo = await this.GenerateMainProcessStartInfoAsync(downloadTaskId);
 
-            var executeTask = Task.Run(async () =>
-            {
-                var resetEvent = new AutoResetEvent(false);
-
-                try
-                {
-                    var process = new Process()
-                    {
-                        StartInfo = processInfo,
-                        EnableRaisingEvents = true
-                    };
-
-                    process.Exited += (s, e) =>
-                    {
-                        resetEvent.Set();
-                    };
-                    process.OutputDataReceived += (s, e) =>
-                    {
-                        _logger.LogDebug(e.Data);
-                    };
-
-                    await this.NotifyClientAboutStartedDownloadAsync(downloadTaskId);
-
-                    process.Start();
-                    // Enables the asynchronus callback function to receive the redirected data.
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
-
-                    // Wait for the process to finish.
-                    _logger.LogDebug("Waiting for the download to finish...");
-                    resetEvent.WaitOne();
-                    _logger.LogDebug($"Finished downloading.");
-
-                    await this.NotifyClientAboutFinishedDownloadAsync(downloadTaskId);
-                }
-                catch (Exception e)
-                {
-                    _logger.LogError(e, "Download process threw an exception:");
-
-                    resetEvent.Set();
-                    await this.NotifyClientAboutFailedDownloadAsync(downloadTaskId);
-                }
-                finally
-                {
-                    // Remove download task in order to not download it again.
-                    // If not removed this would cause an endless loop.
-                    await this.RemoveDownloadTaskAsync(downloadTaskId);
-                }
-            }, stoppingToken);
-
-            await executeTask;
+            await Task.Run(async () => await this.InfoDownloadProcessAsync(infoProcessInfo, downloadTaskId), stoppingToken);
+            await Task.Run(async () => await this.MainDownloadProcessAsync(mainProcessInfo, downloadTaskId), stoppingToken);
         }
 
-        private async Task<ProcessStartInfo> GenerateProcessStartInfoAsync(Guid downloadTaskId)
+        private async Task<ProcessStartInfo> GenerateInfoProcessStartInfoAsync(Guid downloadTaskId)
         {
             using (var db = _factory.CreateDbContext(new string[0]))
             {
                 var baseDir = AppDomain.CurrentDomain.BaseDirectory;
                 var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
 
-                _logger.LogDebug($"Preparing to download {downloadTask.Url}");
+                _logger.LogDebug($"Generating info ProcessStartInformation for {downloadTask.Url}");
+
+                var youtubeDlLocation = _config.GetValue<string>("YoutubeDlLocation");
+                var processInfo = new ProcessStartInfo(youtubeDlLocation)
+                {
+                    UseShellExecute = false,
+                    WorkingDirectory = baseDir,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    Arguments = $"--no-call-home -j {downloadTask.Url}"
+                };
+
+                return processInfo;
+            }
+        }
+
+        private async Task<ProcessStartInfo> GenerateMainProcessStartInfoAsync(Guid downloadTaskId)
+        {
+            using (var db = _factory.CreateDbContext(new string[0]))
+            {
+                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
+
+                _logger.LogDebug($"Generating main ProcessStartInformation for {downloadTask.Url}");
 
                 var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadTask.Downloader, downloadTask.Id).ToString();
                 var ffmpegLocation = _config.GetValue<string>("FfmpegLocation");
@@ -216,6 +194,113 @@ namespace DockerYoutubeDL.Services
                 }
 
                 return processInfo;
+            }
+        }
+
+        private async Task InfoDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
+        {
+            var resetEvent = new AutoResetEvent(false);
+
+            try
+            {
+                using (var db = _factory.CreateDbContext(new string[0]))
+                {
+                    var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
+                    var process = new Process()
+                    {
+                        StartInfo = processInfo,
+                        EnableRaisingEvents = true
+                    };
+
+                    process.Exited += (s, e) =>
+                    {
+                        resetEvent.Set();
+                    };
+                    process.OutputDataReceived += (s, e) =>
+                    {
+                        var template = JsonConvert.DeserializeObject<YoutubeDlOutputTemplate>(e.Data);
+                        var result = new DownloadResult()
+                        {
+                            IdentifierDownloader = downloadTask.Downloader,
+                            IdentifierDownloadTask = downloadTask.Id,
+                            Index = (string.IsNullOrEmpty(template.playlist_index))? 0 : Int32.Parse(template.playlist_index),
+                            Url = template.webpage_url,
+                            IsPartOfPlaylist = !string.IsNullOrEmpty(template.playlist_index),
+                            Name = template.title
+                        };
+
+                        db.DownloadResult.Add(result);
+                        db.SaveChanges();
+
+                        _logger.LogDebug($"Info received: Name={result.Name}, Index={result.Index}, IsPartOfPlaylist={result.IsPartOfPlaylist}");
+                    };
+
+                    process.Start();
+                    // Enables the asynchronus callback function to receive the redirected data.
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+
+                    // Wait for the process to finish.
+                    _logger.LogDebug("Waiting for the info download process to finish...");
+                    resetEvent.WaitOne();
+                    _logger.LogDebug($"Finished downloading information.");
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Info download process threw an exception:");
+
+                resetEvent.Set();
+            }
+        }
+
+        private async Task MainDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
+        {
+            var resetEvent = new AutoResetEvent(false);
+
+            try
+            {
+                var process = new Process()
+                {
+                    StartInfo = processInfo,
+                    EnableRaisingEvents = true
+                };
+
+                process.Exited += (s, e) =>
+                {
+                    resetEvent.Set();
+                };
+                process.OutputDataReceived += (s, e) =>
+                {
+                    _logger.LogDebug(e.Data);
+                };
+
+                await this.NotifyClientAboutStartedDownloadAsync(downloadTaskId);
+
+                process.Start();
+                // Enables the asynchronus callback function to receive the redirected data.
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+
+                // Wait for the process to finish.
+                _logger.LogDebug("Waiting for the main download process to finish...");
+                resetEvent.WaitOne();
+                _logger.LogDebug($"Finished downloading files.");
+
+                await this.NotifyClientAboutFinishedDownloadAsync(downloadTaskId);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Main download process threw an exception:");
+
+                resetEvent.Set();
+                await this.NotifyClientAboutFailedDownloadAsync(downloadTaskId);
+            }
+            finally
+            {
+                // Remove download task in order to not download it again.
+                // If not removed this would cause an endless loop.
+                await this.RemoveDownloadTaskAsync(downloadTaskId);
             }
         }
 
