@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using DockerYoutubeDL.DAL;
+using DockerYoutubeDL.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
@@ -14,16 +15,18 @@ namespace DockerYoutubeDL.Pages
     {
         private DownloadContext _context;
         private ILogger _logger;
+        private DownloadPathGenerator _pathGenerator;
 
-        public DownloadModel(DownloadContext context, ILogger<DownloadModel> logger)
+        public DownloadModel(DownloadContext context, ILogger<DownloadModel> logger, DownloadPathGenerator pathGenerator)
         {
-            if (context == null || logger == null)
+            if (context == null || logger == null || pathGenerator == null)
             {
                 throw new ArgumentException();
             }
 
             _context = context;
             _logger = logger;
+            _pathGenerator = pathGenerator;
         }
 
         public async Task<ActionResult> OnGet([FromQuery] string taskIdentifier, [FromQuery] string taskResultIdentifier)
@@ -46,7 +49,8 @@ namespace DockerYoutubeDL.Pages
 
                     if(isInUserDir)
                     {
-                        var fileName = Path.GetFileName(requestedResult.PathToFile);
+                        // [0] contains the video identifier.
+                        var fileName = Path.GetFileName(requestedResult.PathToFile).Split(_pathGenerator.NameDilimiter)[1];
                         var fileBytes = System.IO.File.ReadAllBytes(requestedResult.PathToFile);
 
                         result = File(fileBytes, System.Net.Mime.MediaTypeNames.Application.Octet, fileName);
