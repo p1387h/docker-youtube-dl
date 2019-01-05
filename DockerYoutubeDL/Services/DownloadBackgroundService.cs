@@ -34,7 +34,7 @@ namespace DockerYoutubeDL.Services
         private int _waitTimeSeconds = 10;
         private Policy _notificationPolicy;
 
-        private int _currentIndex = 0;
+        private string _currentDownloadVideoIdentifier = null;
         private readonly string _nameDelimiter = "-----------";
 
         public DownloadBackgroundService(
@@ -282,13 +282,10 @@ namespace DockerYoutubeDL.Services
 
                 process.Exited += (s, e) =>
                 {
-                    // The last download of a playlist does not trigger the notification of the output.
-                    // A single download does that not as well but must keep the default index.
-                    if (_currentIndex > 0)
-                    {
-                        _currentIndex++;
-                    }
-                    Task.Run(async () => await this.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, _currentIndex));
+                    // The last download of a playlist does not trigger the notification of the output
+                    // (Same goes for a simple download).
+                    Task.Run(async () => await this.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
+                    Task.Run(async () => await this.MarkDownloadResultAsDownloadedAsync(downloadTaskId, _currentDownloadVideoIdentifier));
 
                     resetEvent.Set();
                 };
@@ -305,20 +302,13 @@ namespace DockerYoutubeDL.Services
 
                         if (matchVideoDownloadPlaylist.Success)
                         {
-                            var currentIndex = Int32.Parse(matchVideoDownloadPlaylist.Groups["currentIndex"].Value);
-                            
-                            // Playlist start at index 1. Single downloads do not contain the tested regex.
-                            if (currentIndex - 1 > 0)
-                            {
-                                Task.Run(async () => await this.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, _currentIndex - 1));
-                                Task.Run(async () => await this.MarkDownloadResultAsDownloadedAsync(downloadTaskId, _currentIndex - 1));
-                            }
-
-                            _currentIndex = currentIndex;
+                            Task.Run(async () => await this.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
+                            Task.Run(async () => await this.MarkDownloadResultAsDownloadedAsync(downloadTaskId, _currentDownloadVideoIdentifier));
                         }
                         else if (matchVideoWebPage.Success)
                         {
-                            Task.Run(async () => await this.NotifyClientAboutStartedDownloadAsync(downloadTaskId, _currentIndex));
+                            _currentDownloadVideoIdentifier = matchVideoWebPage.Groups["videoIdentifier"].Value;
+                            Task.Run(async () => await this.NotifyClientAboutStartedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
                         }
                     }
                     else
@@ -349,7 +339,7 @@ namespace DockerYoutubeDL.Services
                 // Remove download task in order to not download it again.
                 // If not removed this would cause an endless loop.
                 await this.RemoveDownloadTaskAsync(downloadTaskId);
-                _currentIndex = 0;
+                _currentDownloadVideoIdentifier = null;
             }
         }
 
@@ -383,7 +373,7 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task NotifyClientAboutStartedDownloadAsync(Guid downloadTaskId, int index)
+        private async Task NotifyClientAboutStartedDownloadAsync(Guid downloadTaskId, string videoIdentifier)
         {
             using (var db = _factory.CreateDbContext(new string[0]))
             {
@@ -391,7 +381,7 @@ namespace DockerYoutubeDL.Services
                 {
                     var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
                     var downloadResultId = db.DownloadResult
-                        .Single(x => x.IdentifierDownloadTask == downloadTaskId && x.Index == index)
+                        .First(x => x.IdentifierDownloadTask == downloadTaskId && x.VideoIdentifier == videoIdentifier)
                         .Id;
 
                     var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
@@ -409,7 +399,7 @@ namespace DockerYoutubeDL.Services
                 }
                 catch (Exception e)
                 {
-                    _logger.LogError(e, $"Error while notifying the user of {downloadTaskId} about the started download index={index}.");
+                    _logger.LogError(e, $"Error while notifying the user of {downloadTaskId} about the started download video={videoIdentifier}.");
                 }
             }
         }
@@ -434,21 +424,21 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task NotifyClientAboutFinishedDownloadAsync(Guid downloadTaskId, int index)
+        private async Task NotifyClientAboutFinishedDownloadAsync(Guid downloadTaskId, string videoIdentifier)
         {
             using (var db = _factory.CreateDbContext(new string[0]))
             {
                 try
                 {
-                    var downloadResult = db.DownloadResult.Single(x => x.IdentifierDownloadTask == downloadTaskId && x.Index == index);
+                    var downloadResult = db.DownloadResult.First(x => x.IdentifierDownloadTask == downloadTaskId && x.VideoIdentifier == videoIdentifier);
                     var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadResult.IdentifierDownloader, downloadResult.IdentifierDownloadTask);
 
                     // Find the downloaded file.
                     foreach (string filePath in Directory.GetFiles(downloadFolder))
                     {
-                        var videoIdentifier = Path.GetFileNameWithoutExtension(filePath).Split(_nameDelimiter)[0];
+                        var fileVideoIdentifier = Path.GetFileNameWithoutExtension(filePath).Split(_nameDelimiter)[0];
 
-                        if (videoIdentifier.Equals(downloadResult.VideoIdentifier))
+                        if (fileVideoIdentifier.Equals(downloadResult.VideoIdentifier))
                         {
                             var client = _hub.Clients.Client(_container.StoredClients[downloadResult.IdentifierDownloader]);
 
@@ -476,20 +466,20 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task MarkDownloadResultAsDownloadedAsync(Guid downloadTaskId, int index)
+        private async Task MarkDownloadResultAsDownloadedAsync(Guid downloadTaskId, string videoIdentifier)
         {
             using (var db = _factory.CreateDbContext(new string[0]))
             {
                 try
                 {
-                    var downloadResult = db.DownloadResult.Single(x => x.IdentifierDownloadTask == downloadTaskId && x.Index == index);
+                    var downloadResult = db.DownloadResult.First(x => x.IdentifierDownloadTask == downloadTaskId && x.VideoIdentifier == videoIdentifier);
                     downloadResult.WasDownloaded = true;
 
                     await db.SaveChangesAsync();
                 }
                 catch (Exception e)
                 {
-                    _logger.LogError(e, $"Error while Marking the index {index} of {downloadTaskId} as finished.");
+                    _logger.LogError(e, $"Error while Marking the video {videoIdentifier} of {downloadTaskId} as finished.");
                 }
             }
         }
