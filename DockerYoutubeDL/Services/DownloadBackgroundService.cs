@@ -66,7 +66,7 @@ namespace DockerYoutubeDL.Services
             _notificationPolicy = Policy.Handle<Exception>()
                 .WaitAndRetryAsync(5, (count) => TimeSpan.FromSeconds(count + 1), (e, retryCount, context) =>
                 {
-                    _logger.LogError(e, context["errorMessage"] as string);
+                    _logger.LogError(e, "Polly retry error: " + context["errorMessage"] as string);
                 });
         }
 
@@ -302,9 +302,11 @@ namespace DockerYoutubeDL.Services
                         var regexVideoDownloadPlaylist = new Regex(@"^\[download\] Downloading video (?<currentIndex>[0-9]+) of [0-9]+$");
                         var regexVideoWebPage = new Regex(@"^\[youtube\] (?<videoIdentifier>.+): Downloading webpage$");
                         var regexVideoDownloadProgress = new Regex(@"^\[download\]\s\s?(?<percentage>[0-9]+\.[0-9]+)%.*$");
+                        var regexVideoConverting = new Regex(@"^\[ffmpeg] Destination:.*$");
                         var matchVideoDownloadPlaylist = regexVideoDownloadPlaylist.Match(e.Data);
                         var matchVideoWebPage = regexVideoWebPage.Match(e.Data);
                         var matchVideoDownloadProgress = regexVideoDownloadProgress.Match(e.Data);
+                        var matchVideoConverting = regexVideoConverting.Match(e.Data);
 
                         if (matchVideoDownloadPlaylist.Success)
                         {
@@ -327,6 +329,10 @@ namespace DockerYoutubeDL.Services
                                 _prevPercentage = percentageDouble;
                                 Task.Run(async () => await this.NotifyClientAboutDownloadProgressAsync(downloadTaskId, _currentDownloadVideoIdentifier, percentageDouble));
                             }
+                        }
+                        else if(matchVideoConverting.Success)
+                        {
+                            Task.Run(async () => await this.NotifyClientAboutDownloadConversionAsync(downloadTaskId, _currentDownloadVideoIdentifier));
                         }
                     }
                     else
@@ -525,6 +531,32 @@ namespace DockerYoutubeDL.Services
                 catch (Exception e)
                 {
                     _logger.LogError(e, $"Error while notifying the user of {downloadTaskId} about the progress {percentage}.");
+                }
+            }
+        }
+
+        private async Task NotifyClientAboutDownloadConversionAsync(Guid downloadTaskId, string videoIdentifier)
+        {
+            using (var db = _factory.CreateDbContext(new string[0]))
+            {
+                try
+                {
+                    var downloadResult = db.DownloadResult.First(x => x.IdentifierDownloadTask == downloadTaskId && x.VideoIdentifier == videoIdentifier);
+                    var client = _hub.Clients.Client(_container.StoredClients[downloadResult.IdentifierDownloader]);
+
+                    _logger.LogDebug($"Notifying client about conversion with id={downloadResult.Id}.");
+
+                    await _notificationPolicy.ExecuteAsync(
+                        (context) => client.SendAsync(nameof(IUpdateClient.DownloadConversion), downloadResult.IdentifierDownloadTask, downloadResult.Id),
+                        new Dictionary<string, object>()
+                        {
+                            { "errorMessage", $"Error while notifying user {downloadResult.IdentifierDownloader} about the conversion of {videoIdentifier}." }
+                        }
+                    );
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, $"Error while notifying the user of {downloadTaskId} about the conversion of {videoIdentifier}.");
                 }
             }
         }
