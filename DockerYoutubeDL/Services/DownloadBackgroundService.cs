@@ -13,12 +13,12 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Polly;
 
 namespace DockerYoutubeDL.Services
 {
     public class DownloadBackgroundService : BackgroundService
     {
-        private int _waitTimeSeconds = 10;
         // Factory is used since the service is instantiated once as singleton and therefor 
         // outlives the "normal" session lifetime of the dbcontext.
         private IDesignTimeDbContextFactory<DownloadContext> _factory;
@@ -27,6 +27,9 @@ namespace DockerYoutubeDL.Services
         private IHubContext<UpdateHub> _hub;
         private UpdateClientContainer _container;
         private DownloadPathGenerator _pathGenerator;
+
+        private int _waitTimeSeconds = 10;
+        private Policy _notificationPolicy;
 
         public DownloadBackgroundService(
             IDesignTimeDbContextFactory<DownloadContext> factory,
@@ -48,6 +51,13 @@ namespace DockerYoutubeDL.Services
             _hub = hub;
             _container = container;
             _pathGenerator = pathGenerator;
+
+            // The same policy is used for all notification attempts.
+            _notificationPolicy = Policy.Handle<Exception>()
+                .WaitAndRetryAsync(5, (count) => TimeSpan.FromSeconds(count + 1), (e, retryCount, context) =>
+                {
+                    _logger.LogError(e, context["errorMessage"] as string);
+                });
         }
 
         protected async override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -229,7 +239,14 @@ namespace DockerYoutubeDL.Services
 
                 _logger.LogDebug($"Notifying client about the started download task with id={downloadTaskId}.");
 
-                await client.SendAsync(nameof(IUpdateClient.DownloadStarted), downloadTaskId);
+                // Notify the matching client about the started download.
+                await _notificationPolicy.ExecuteAsync(
+                    (context) => client.SendAsync(nameof(IUpdateClient.DownloadStarted), downloadTaskId),
+                    new Dictionary<string, object>()
+                    {
+                        { "errorMessage", $"Error while notifying user {downloadTask.Downloader} about the started download." }
+                    }
+                );
             }
         }
 
@@ -243,7 +260,13 @@ namespace DockerYoutubeDL.Services
                 _logger.LogDebug($"Notifying client about failed download task with id={downloadTaskId}.");
 
                 // Notify the matching client about the failure.
-                await client.SendAsync(nameof(IUpdateClient.DownloadFailed), downloadTaskId);
+                await _notificationPolicy.ExecuteAsync(
+                    (context) => client.SendAsync(nameof(IUpdateClient.DownloadFailed), downloadTaskId),
+                    new Dictionary<string, object>()
+                    {
+                        { "errorMessage", $"Error while notifying user {downloadTask.Downloader} about the failed download." }
+                    }
+                );
             }
         }
 
@@ -278,7 +301,13 @@ namespace DockerYoutubeDL.Services
                 {
                     _logger.LogDebug($"Notifying client about result with id={result.Id}.");
 
-                    await client.SendAsync(nameof(IUpdateClient.DownloadFinished), result.IdentifierDownloadTask, result.Id);
+                    await _notificationPolicy.ExecuteAsync(
+                        (context) => client.SendAsync(nameof(IUpdateClient.DownloadFinished), result.IdentifierDownloadTask, result.Id),
+                        new Dictionary<string, object>()
+                        {
+                            { "errorMessage", $"Error while notifying user {downloadTask.Downloader} about the finished download." }
+                        }
+                    );
                 }
 
                 await db.SaveChangesAsync();
