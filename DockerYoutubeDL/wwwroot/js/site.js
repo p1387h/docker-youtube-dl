@@ -36,7 +36,8 @@ $(document).ready(function () {
             .then(function (value) {
                 if (value.success === true) {
                     console.log(value);
-                    hideNoFiles();
+
+                    $("#filesEmpty").hide();
                     addListHeader(value.taskIdentifier, value.url);
                 }
                 else {
@@ -46,10 +47,6 @@ $(document).ready(function () {
             .catch(function (error) {
                 console.log(error);
             });
-
-        let hideNoFiles = function () {
-            $("#filesEmpty").attr("hidden", true);
-        }
 
         let chevronDown = function () {
             return $.parseHTML("<span class=\"glyphicon glyphicon-chevron-down\"></span>");
@@ -63,11 +60,11 @@ $(document).ready(function () {
             let fileEntry = $("#templateFileEntry").clone();
 
             // Head:
-            fileEntry.attr({ hidden: false, id: "fileEntry_" + guid });
+            fileEntry.attr("id", "fileEntry_" + guid).attr("hidden", false);
             fileEntry.find("#templateHeading").attr("id", "heading_" + guid);
             fileEntry.find("a").first().text(" " + url).attr({ "data-toggle": "", href: "#body_" + guid }).prepend(glyphiconMinus());
             fileEntry.find("#templateContainerButtonDownload").attr("id", "containerButtonDownload_" + guid);
-            fileEntry.find("#templateWaitingInQueue").attr("id", "waitingInQueue_" + guid);
+            fileEntry.find("#templateMessageToUser").attr("id", "messageToUser_" + guid);
             fileEntry.find("#templateLoading").attr("id", "loading_" + guid);
 
             // Body:
@@ -103,7 +100,7 @@ $(document).ready(function () {
         let guid = taskIdentifier;
         let fileEntry = $("#fileEntry_" + guid);
         fileEntry.find("#loading_" + guid).hide();
-        fileEntry.find("#containerButtonDownload_" + guid).attr("hidden", false)
+        fileEntry.find("#containerButtonDownload_" + guid).show()
             .find("a").attr("href", "./download?taskIdentifier=" + guid + "&taskResultIdentifier=" + taskResultIdentifier);
     });
 
@@ -114,6 +111,7 @@ $(document).ready(function () {
         let fileEntry = $("#fileEntry_" + guid);
         fileEntry.addClass("panel-danger");
         fileEntry.find("#loading_" + guid).hide();
+        fileEntry.find("#messageToUser_" + guid).text("Download failed. See the logs for details.").show();
     });
 
     connection.on("DownloadStarted", function (taskIdentifier) {
@@ -121,8 +119,8 @@ $(document).ready(function () {
 
         let guid = taskIdentifier;
         let fileEntry = $("#fileEntry_" + guid);
-        fileEntry.find("#waitingInQueue_" + guid).hide();
-        fileEntry.find("#loading_" + guid).attr("hidden", false);
+        fileEntry.find("#messageToUser_" + guid).hide();
+        fileEntry.find("#loading_" + guid).show();
     });
 
     connection.on("Ping", () => {
