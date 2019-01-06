@@ -25,13 +25,13 @@ namespace DockerYoutubeDL.Services
         private Policy _notificationPolicy;
 
         public NotificationService(
-            IDesignTimeDbContextFactory<DownloadContext> factory, 
-            ILogger<NotificationService> logger, 
-            IHubContext<UpdateHub> hub, 
-            UpdateClientContainer container, 
+            IDesignTimeDbContextFactory<DownloadContext> factory,
+            ILogger<NotificationService> logger,
+            IHubContext<UpdateHub> hub,
+            UpdateClientContainer container,
             DownloadPathGenerator pathGenerator)
         {
-            if(factory == null || logger == null || hub == null ||
+            if (factory == null || logger == null || hub == null ||
                 container == null || pathGenerator == null)
             {
                 throw new ArgumentException();
@@ -108,7 +108,7 @@ namespace DockerYoutubeDL.Services
                 var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
                 var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
 
-                _logger.LogDebug($"Notifying client about failed download task with id={downloadTaskId}.");
+                _logger.LogDebug($"Notifying client about the failed download task with id={downloadTaskId}.");
 
                 // Notify the matching client about the failure.
                 await _notificationPolicy.ExecuteAsync(
@@ -120,6 +120,27 @@ namespace DockerYoutubeDL.Services
                 );
             }
         }
+
+        public async Task NotifyClientAboutDownloaderError(Guid downloadTaskId)
+        {
+            using (var db = _factory.CreateDbContext(new string[0]))
+            {
+                var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
+                var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
+
+                _logger.LogDebug($"Notifying client about the downloader error id={downloadTaskId}.");
+
+                // Notify the matching client about the failure.
+                await _notificationPolicy.ExecuteAsync(
+                    (context) => client.SendAsync(nameof(IUpdateClient.DownloaderError), downloadTaskId),
+                    new Dictionary<string, object>()
+                    {
+                        { "errorMessage", $"Error while notifying user {downloadTask.Downloader} about the downloader error." }
+                    }
+                );
+            }
+        }
+
 
         public async Task NotifyClientAboutFinishedDownloadAsync(Guid downloadTaskId, string videoIdentifier)
         {
@@ -212,6 +233,25 @@ namespace DockerYoutubeDL.Services
                 {
                     _logger.LogError(e, $"Error while notifying the user of {downloadTaskId} about the conversion of {videoIdentifier}.");
                 }
+            }
+        }
+
+        public async Task NotifyClientAboutDownloadProblemAsync(Guid downloadTaskId, string message)
+        {
+            using (var db = _factory.CreateDbContext(new string[0]))
+            {
+                var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
+                var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
+
+                _logger.LogDebug($"Notifying client about problem={message} of task id={downloadTaskId}.");
+
+                await _notificationPolicy.ExecuteAsync(
+                    (context) => client.SendAsync(nameof(IUpdateClient.DownloadProblem), downloadTaskId, message),
+                    new Dictionary<string, object>()
+                    {
+                        { "errorMessage", $"Error while notifying user {downloadTask.Downloader} about the problem={message}." }
+                    }
+                );
             }
         }
     }

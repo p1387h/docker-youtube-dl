@@ -105,9 +105,17 @@ namespace DockerYoutubeDL.Services
         {
             var infoProcessInfo = await this.GenerateInfoProcessStartInfoAsync(downloadTaskId);
             var mainProcessInfo = await this.GenerateMainProcessStartInfoAsync(downloadTaskId);
+            var continueWithMainDownload = await Task.Run(async () => await this.InfoDownloadProcessAsync(infoProcessInfo, downloadTaskId), stoppingToken);
+            
+            // There is the possibility of the video not being available.
+            if(continueWithMainDownload)
+            {
+                await Task.Run(async () => await this.MainDownloadProcessAsync(mainProcessInfo, downloadTaskId), stoppingToken);
+            }
 
-            await Task.Run(async () => await this.InfoDownloadProcessAsync(infoProcessInfo, downloadTaskId), stoppingToken);
-            await Task.Run(async () => await this.MainDownloadProcessAsync(mainProcessInfo, downloadTaskId), stoppingToken);
+            // Remove download task in order to not download it again.
+            // If not removed this would cause an endless loop.
+            await this.RemoveDownloadTaskAsync(downloadTaskId);
         }
 
         private async Task<ProcessStartInfo> GenerateInfoProcessStartInfoAsync(Guid downloadTaskId)
@@ -197,8 +205,9 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task InfoDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
+        private async Task<bool> InfoDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
         {
+            var continueWithMainDownload = true;
             var resetEvent = new AutoResetEvent(false);
 
             try
@@ -216,6 +225,37 @@ namespace DockerYoutubeDL.Services
                     _infoDownloadProcess.Exited += (s, e) =>
                     {
                         resetEvent.Set();
+                    };
+                    _infoDownloadProcess.ErrorDataReceived += (s, e) =>
+                    {
+                        if (e.Data != null)
+                        {
+                            _logger.LogDebug(e.Data);
+
+                            var regexVideoProblem = new Regex(@"^(?<type>WARNING):\s(?<message>.*)$|^(?<type>ERROR):\s(?<message>.*)$");
+                            var matchVideoProblem = regexVideoProblem.Match(e.Data);
+
+                            if (matchVideoProblem.Success)
+                            {
+                                var message = matchVideoProblem.Groups["message"].Value;
+                                var type = matchVideoProblem.Groups["type"].Value;
+
+                                Task.Run(async () => await _notification.NotifyClientAboutDownloadProblemAsync(downloadTaskId, message));
+
+                                // An error causes the task to completely fail.
+                                if (type.Equals("ERROR"))
+                                {
+                                    Task.Run(async () => await _notification.NotifyClientAboutFailedDownloadAsync(downloadTaskId));
+
+                                    // Do NOT continue with the main download process since a major error occurrred.
+                                    continueWithMainDownload = false;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogDebug("Received stdErr download data was null.");
+                        }
                     };
                     _infoDownloadProcess.OutputDataReceived += (s, e) =>
                     {
@@ -268,6 +308,8 @@ namespace DockerYoutubeDL.Services
                 _infoDownloadProcessOwner = new Guid();
                 _infoDownloadProcess = null;
             }
+
+            return continueWithMainDownload;
         }
 
         private async Task MainDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
@@ -305,11 +347,11 @@ namespace DockerYoutubeDL.Services
                         var regexVideoDownloadPlaylist = new Regex(@"^\[download\] Downloading video (?<currentIndex>[0-9]+) of [0-9]+$");
                         var regexVideoWebPage = new Regex(@"^\[youtube\] (?<videoIdentifier>.+): Downloading webpage$");
                         var regexVideoDownloadProgress = new Regex(@"^\[download\]\s\s?(?<percentage>[0-9]+\.[0-9]+)%.*$");
-                        var regexVideoConverting = new Regex(@"^\[ffmpeg] Destination:.*$");
+                        var regexVideoConversion = new Regex(@"^\[ffmpeg\]\s.*Destination:.*$");
                         var matchVideoDownloadPlaylist = regexVideoDownloadPlaylist.Match(e.Data);
                         var matchVideoWebPage = regexVideoWebPage.Match(e.Data);
                         var matchVideoDownloadProgress = regexVideoDownloadProgress.Match(e.Data);
-                        var matchVideoConverting = regexVideoConverting.Match(e.Data);
+                        var matchVideoConversion = regexVideoConversion.Match(e.Data);
 
                         if (matchVideoDownloadPlaylist.Success)
                         {
@@ -333,14 +375,14 @@ namespace DockerYoutubeDL.Services
                                 Task.Run(async () => await _notification.NotifyClientAboutDownloadProgressAsync(downloadTaskId, _currentDownloadVideoIdentifier, percentageDouble));
                             }
                         }
-                        else if (matchVideoConverting.Success)
+                        else if (matchVideoConversion.Success)
                         {
                             Task.Run(async () => await _notification.NotifyClientAboutDownloadConversionAsync(downloadTaskId, _currentDownloadVideoIdentifier));
                         }
                     }
                     else
                     {
-                        _logger.LogDebug("Received download data was null.");
+                        _logger.LogDebug("Received stdOut download data was null.");
                     }
                 };
 
@@ -353,17 +395,13 @@ namespace DockerYoutubeDL.Services
                 _logger.LogDebug("Waiting for the main download process to finish...");
                 resetEvent.WaitOne();
                 _logger.LogDebug($"Finished downloading files.");
-
-                // Remove download task in order to not download it again.
-                // If not removed this would cause an endless loop.
-                await this.RemoveDownloadTaskAsync(downloadTaskId);
             }
             catch (Exception e)
             {
                 _logger.LogError(e, "Main download process threw an exception:");
 
                 resetEvent.Set();
-                await _notification.NotifyClientAboutFailedDownloadAsync(downloadTaskId);
+                await _notification.NotifyClientAboutDownloaderError(downloadTaskId);
             }
             finally
             {

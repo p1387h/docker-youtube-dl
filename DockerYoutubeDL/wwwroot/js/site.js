@@ -168,7 +168,7 @@ $(document).ready(function () {
         let container = $("#containerDownloadInfo_" + guid);
         container.children("div").hide();
         container.find("#containerDownloadInfoProgress_" + guid).show();
-        container.find(".progress-bar").text("Converting...");
+        container.find(".progress-bar").text("Converting... (This could take a while)");
     });
 
     connection.on("DownloadFinished", (taskIdentifier, taskResultIdentifier) => {
@@ -183,6 +183,18 @@ $(document).ready(function () {
 
     connection.on("DownloadFailed", (taskIdentifier) => {
         console.log({ state: "Failed", task: taskIdentifier });
+
+        
+    });
+
+    connection.on("DownloadProblem", (taskIdentifier, message) => {
+        console.log({ state: "Problem", task: taskIdentifier, message: message });
+
+
+    });
+
+    connection.on("DownloaderError", (taskIdentifier) => {
+        console.log({ state: "DownloaderError", task: taskIdentifier });
 
         let guid = taskIdentifier;
         let fileEntry = $("#fileEntry_" + guid);
