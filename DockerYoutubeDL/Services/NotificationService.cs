@@ -58,9 +58,11 @@ namespace DockerYoutubeDL.Services
             await _notificationPolicy.ExecuteAsync(
                 async (context) =>
                 {
-                    using (var db = _factory.CreateDbContext(new string[0]))
+                    var clientIdentifier = _container.StoredClients.GetValueOrDefault(outputInfo.DownloaderIdentifier);
+
+                    if (!string.IsNullOrEmpty(clientIdentifier))
                     {
-                        var client = _hub.Clients.Client(_container.StoredClients[outputInfo.DownloaderIdentifier]);
+                        var client = _hub.Clients.Client(clientIdentifier);
 
                         _logger.LogDebug($"Notifying client about the received download info for result with id={outputInfo.DownloadResultIdentifier}.");
 
@@ -80,9 +82,11 @@ namespace DockerYoutubeDL.Services
             await _notificationPolicy.ExecuteAsync(
                 async (context) =>
                 {
-                    using (var db = _factory.CreateDbContext(new string[0]))
+                    var clientIdentifier = _container.StoredClients.GetValueOrDefault(outputInfo.DownloaderIdentifier);
+
+                    if (!string.IsNullOrEmpty(clientIdentifier))
                     {
-                        var client = _hub.Clients.Client(_container.StoredClients[outputInfo.DownloaderIdentifier]);
+                        var client = _hub.Clients.Client(clientIdentifier);
 
                         _logger.LogDebug($"Notifying client about the failed download task with id={outputInfo.DownloadTaskIdentifier}.");
 
@@ -105,11 +109,20 @@ namespace DockerYoutubeDL.Services
                     using (var db = _factory.CreateDbContext(new string[0]))
                     {
                         var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                        var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
 
-                        _logger.LogDebug($"Notifying client about the started download task with id={downloadTaskId}, result.id={downloadResultId}.");
+                        if (downloadTask != null)
+                        {
+                            var clientIdentifier = _container.StoredClients.GetValueOrDefault(downloadTask.Downloader);
 
-                        await client.SendAsync(nameof(IUpdateClient.DownloadStarted), downloadTaskId, downloadResultId);
+                            if (!string.IsNullOrEmpty(clientIdentifier))
+                            {
+                                var client = _hub.Clients.Client(clientIdentifier);
+
+                                _logger.LogDebug($"Notifying client about the started download task with id={downloadTaskId}, result.id={downloadResultId}.");
+
+                                await client.SendAsync(nameof(IUpdateClient.DownloadStarted), downloadTaskId, downloadResultId);
+                            }
+                        }
                     }
                 },
                 new Dictionary<string, object>()
@@ -128,11 +141,20 @@ namespace DockerYoutubeDL.Services
                     using (var db = _factory.CreateDbContext(new string[0]))
                     {
                         var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                        var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
 
-                        _logger.LogDebug($"Notifying client about progress {percentage} of task={downloadTaskId}, result={downloadResultId}.");
+                        if (downloadTask != null)
+                        {
+                            var clientIdentifier = _container.StoredClients.GetValueOrDefault(downloadTask.Downloader);
 
-                        await client.SendAsync(nameof(IUpdateClient.DownloadProgress), downloadTaskId, downloadResultId, percentage);
+                            if (!string.IsNullOrEmpty(clientIdentifier))
+                            {
+                                var client = _hub.Clients.Client(clientIdentifier);
+
+                                _logger.LogDebug($"Notifying client about progress {percentage} of task={downloadTaskId}, result={downloadResultId}.");
+
+                                await client.SendAsync(nameof(IUpdateClient.DownloadProgress), downloadTaskId, downloadResultId, percentage);
+                            }
+                        }
                     }
                 },
                 new Dictionary<string, object>()
@@ -151,11 +173,20 @@ namespace DockerYoutubeDL.Services
                     using (var db = _factory.CreateDbContext(new string[0]))
                     {
                         var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                        var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
 
-                        _logger.LogDebug($"Notifying client about conversion with id={downloadResultId}.");
+                        if (downloadTask != null)
+                        {
+                            var clientIdentifier = _container.StoredClients.GetValueOrDefault(downloadTask.Downloader);
 
-                        await client.SendAsync(nameof(IUpdateClient.DownloadConversion), downloadTaskId, downloadResultId);
+                            if (!string.IsNullOrEmpty(clientIdentifier))
+                            {
+                                var client = _hub.Clients.Client(clientIdentifier);
+
+                                _logger.LogDebug($"Notifying client about conversion with id={downloadResultId}.");
+
+                                await client.SendAsync(nameof(IUpdateClient.DownloadConversion), downloadTaskId, downloadResultId);
+                            }
+                        }
                     }
                 },
                 new Dictionary<string, object>()
@@ -174,11 +205,20 @@ namespace DockerYoutubeDL.Services
                     using (var db = _factory.CreateDbContext(new string[0]))
                     {
                         var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                        var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
 
-                        _logger.LogDebug($"Notifying client about result with id={downloadResultId}.");
+                        if (downloadTask != null)
+                        {
+                            var clientIdentifier = _container.StoredClients.GetValueOrDefault(downloadTask.Downloader);
 
-                        await client.SendAsync(nameof(IUpdateClient.DownloadFinished), downloadTaskId, downloadResultId);
+                            if (!string.IsNullOrEmpty(clientIdentifier))
+                            {
+                                var client = _hub.Clients.Client(clientIdentifier);
+
+                                _logger.LogDebug($"Notifying client about result with id={downloadResultId}.");
+
+                                await client.SendAsync(nameof(IUpdateClient.DownloadFinished), downloadTaskId, downloadResultId);
+                            }
+                        }
                     }
                 },
                 new Dictionary<string, object>()
@@ -197,11 +237,20 @@ namespace DockerYoutubeDL.Services
                     using (var db = _factory.CreateDbContext(new string[0]))
                     {
                         var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                        var client = _hub.Clients.Client(_container.StoredClients[downloadTask.Downloader]);
 
-                        _logger.LogDebug($"Notifying user of task {downloadTaskId} about the downloader error.");
+                        if (downloadTask != null)
+                        {
+                            var clientIdentifier = _container.StoredClients.GetValueOrDefault(downloadTask.Downloader);
 
-                        await client.SendAsync(nameof(IUpdateClient.DownloaderError), downloadTaskId);
+                            if (!string.IsNullOrEmpty(clientIdentifier))
+                            {
+                                var client = _hub.Clients.Client(clientIdentifier);
+
+                                _logger.LogDebug($"Notifying user of task {downloadTaskId} about the downloader error.");
+
+                                await client.SendAsync(nameof(IUpdateClient.DownloaderError), downloadTaskId);
+                            }
+                        }
                     }
                 },
                 new Dictionary<string, object>()
