@@ -49,7 +49,8 @@ namespace DockerYoutubeDL.Pages
                     Url = downloadInfo.Url,
                     DateAdded = DateTime.Now,
                     AudioFormat = downloadInfo.AudioFormat,
-                    VideoFormat = downloadInfo.VideoFormat
+                    VideoFormat = downloadInfo.VideoFormat,
+                    HadInformationGathered = false
                 };
 
                 await _context.DownloadTask.AddAsync(downloadTask);

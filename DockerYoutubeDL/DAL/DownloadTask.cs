@@ -14,6 +14,9 @@ namespace DockerYoutubeDL.DAL
         public DateTime DateAdded { get; set; }
         public AudioFormat AudioFormat { get; set; }
         public VideoFormat VideoFormat { get; set; }
+
+        // Flags indicating the state of the task.
+        public bool HadInformationGathered { get; set; }
         public bool WasDownloaded { get; set; }
         public bool WasInterrupted { get; set; }
 

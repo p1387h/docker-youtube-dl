@@ -38,6 +38,8 @@ namespace DockerYoutubeDL
             var root = new InMemoryDatabaseRoot();
             services.AddSingleton<InMemoryDatabaseRoot>(root);
             services.AddDbContext<DownloadContext>(options => options.UseInMemoryDatabase("internalDownloadDb", root));
+            // Allows for the injection of a factory that can be used to generate a db context.
+            services.AddSingleton<IDesignTimeDbContextFactory<DownloadContext>, DownloadContextFactory>();
 
             // Component for generating the paths of the download folders:
             services.AddSingleton<DownloadPathGenerator>();
@@ -49,8 +51,11 @@ namespace DockerYoutubeDL
             services.AddTransient<UpdateHub>();
             services.AddSignalR();
 
+            // Information background service:
+            services.AddSingleton<InfoBackgroundService>();
+            services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, InfoBackgroundService>((provider) => provider.CreateScope().ServiceProvider.GetRequiredService<InfoBackgroundService>());
+
             // Download background service:
-            services.AddSingleton<IDesignTimeDbContextFactory<DownloadContext>, DownloadContextFactory>();
             services.AddSingleton<DownloadBackgroundService>();
             services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, DownloadBackgroundService>((provider) => provider.CreateScope().ServiceProvider.GetRequiredService<DownloadBackgroundService>());
 
