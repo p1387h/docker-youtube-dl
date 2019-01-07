@@ -125,13 +125,6 @@ namespace DockerYoutubeDL.Services
                 await this.MainDownloadProcessAsync(mainProcessInfo, downloadTaskId);
             }
 
-            // Db clean up.
-            if (!_wasKilledByDisconnect)
-            {
-                await this.MarkDownloadTaskAsDownloadedAsync(downloadTaskId);
-                await this.MarkPossibleDownloadResultsAsDownloadedAsync(downloadTaskId);
-            }
-
             // Reset any set flag.
             _wasKilledByDisconnect = false;
         }
@@ -422,10 +415,13 @@ namespace DockerYoutubeDL.Services
                     // Prevent exceptions by only allowing non killed processes to continue.
                     if (!_wasKilledByDisconnect)
                     {
+                        this.MarkDownloadTaskAsDownloaded(downloadTaskId);
+
                         // The last download of a playlist does not trigger the notification of the output
                         // (Same goes for a simple download).
                         this.SavePathForDownloadResult(downloadTaskId, currentDownloadVideoIdentifier);
                         this.SendFinishedNotification(downloadTaskId, currentDownloadVideoIdentifier);
+                        this.MarkPossibleDownloadResultAsDownloaded(downloadTaskId, currentDownloadVideoIdentifier);
                     }
 
                     resetEvent.Set();
@@ -465,6 +461,7 @@ namespace DockerYoutubeDL.Services
                             {
                                 this.SavePathForDownloadResult(downloadTaskId, currentDownloadVideoIdentifier);
                                 this.SendFinishedNotification(downloadTaskId, currentDownloadVideoIdentifier);
+                                this.MarkPossibleDownloadResultAsDownloaded(downloadTaskId, currentDownloadVideoIdentifier);
                             }
                         }
                         else if (matchVideoWebPage.Success)
@@ -634,37 +631,36 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task MarkPossibleDownloadResultsAsDownloadedAsync(Guid downloadTaskId)
+        private void MarkPossibleDownloadResultAsDownloaded(Guid downloadTaskId, string videoIdentifier)
         {
             using (var db = _factory.CreateDbContext(new string[0]))
             {
                 try
                 {
-                    var downloadResults = db.DownloadResult
+                    var downloadResult = db.DownloadResult
                         .Include(x => x.DownloadTask)
-                        .Where(x => x.DownloadTask.Id == downloadTaskId)
-                        .Where(x => !x.HasError)
-                        .ToList();
-                    downloadResults.ForEach(x => x.WasDownloaded = true);
+                        .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(videoIdentifier));
+                    downloadResult.WasDownloaded = true;
 
-                    await db.SaveChangesAsync();
+                    db.SaveChanges();
                 }
                 catch (Exception e)
                 {
-                    _logger.LogError(e, $"Error while marking the downloadable results of {downloadTaskId} as downloaded.");
+                    _logger.LogError(e, $"Error while marking result with identifier={videoIdentifier} of task with id={downloadTaskId} as downloaded.");
                 }
             }
         }
 
-        private async Task MarkDownloadTaskAsDownloadedAsync(Guid downloadTaskId)
+        private void MarkDownloadTaskAsDownloaded(Guid downloadTaskId)
         {
             try
             {
                 using (var db = _factory.CreateDbContext(new string[0]))
                 {
-                    var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
+                    var downloadTask = db.DownloadTask.Find(downloadTaskId);
                     downloadTask.WasDownloaded = true;
-                    await db.SaveChangesAsync();
+
+                    db.SaveChanges();
                 }
             }
             catch (Exception e)
