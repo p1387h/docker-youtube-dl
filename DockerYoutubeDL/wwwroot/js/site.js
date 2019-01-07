@@ -3,31 +3,14 @@
 
 // Write your Javascript code.
 $(document).ready(function () {
+    let allowAjax = true;
+
     let chevronDown = function () {
         return $.parseHTML("<span class=\"glyphicon glyphicon-chevron-down\"></span>");
     }
 
     let glyphiconMinus = function () {
         return $.parseHTML("<span class=\"glyphicon glyphicon-minus\"></span>");
-    }
-
-    let stateMachine = function () {
-        this.states = ["Waiting", "Downloading", "Converting", "Finished"];
-        let state = 0;
-
-        this.nextState = function () {
-            if (state < states.length() - 1) {
-                state++;
-            }
-        }
-
-        this.getState = function () {
-            return state;
-        }
-
-        this.getNamedState = function () {
-            return this.states[state];
-        }
     }
 
     $("#buttonDownload")[0].addEventListener("click", function () {
@@ -49,31 +32,33 @@ $(document).ready(function () {
         //input.value = "";
 
         // Ajax for sending the information to the server.
-        fetch(".", {
-            method: 'POST',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
-        })
-            .then(function (response) {
-                return response.json();
+        if (allowAjax === true) {
+            fetch(".", {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
             })
-            .then(function (value) {
-                if (value.success === true) {
-                    console.log(value);
+                .then(function (response) {
+                    return response.json();
+                })
+                .then(function (value) {
+                    if (value.success === true) {
+                        console.log(value);
 
-                    $("#filesEmpty").hide();
-                    addListHeader(value.taskIdentifier, value.url);
-                }
-                else {
-                    console.log(value);
-                }
-            })
-            .catch(function (error) {
-                console.log(error);
-            });
+                        $("#filesTextContainer").hide();
+                        addListHeader(value.taskIdentifier, value.url);
+                    }
+                    else {
+                        console.log(value);
+                    }
+                })
+                .catch(function (error) {
+                    console.log(error);
+                });
+        }
 
         let addListHeader = function (guid, url) {
             let fileEntry = $("#templateFileEntry").clone();
@@ -112,7 +97,10 @@ $(document).ready(function () {
             console.log("connected");
         } catch (err) {
             console.log(err);
-            setTimeout(() => start(), 500);
+
+            $("#filesTextContainer").show().find("h4").text("Connection to server lost. Please reload the page.");
+            $("#fileEntries").children(".panel").hide();
+            allowAjax = false;
         }
     }
 
@@ -156,7 +144,7 @@ $(document).ready(function () {
 
         // Order of percentages might not be correct.
         let progressBar = container.find(".progress-bar");
-        let currentPercentage = progressBar.text().replace("%","");
+        let currentPercentage = progressBar.text().replace("%", "");
         if (percentage > currentPercentage) {
             progressBar.attr("style", "width:" + percentage + "%").text(percentage + "%");
         }
