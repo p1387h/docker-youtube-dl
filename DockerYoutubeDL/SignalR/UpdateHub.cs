@@ -84,7 +84,7 @@ namespace DockerYoutubeDL.SignalR
             await base.OnDisconnectedAsync(exception);
         }
 
-        public async Task Pong()
+        public void Pong()
         {
             _logger.LogDebug($"User {Context.User.Identity.Name} replied to the ping.");
         }

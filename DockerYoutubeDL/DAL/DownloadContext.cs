@@ -22,8 +22,6 @@ namespace DockerYoutubeDL.DAL
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            base.OnModelCreating(modelBuilder);
-
             // Configuration of the DownloadTask table.
             modelBuilder.Entity<DownloadTask>()
                 .HasKey(x => x.Id);
@@ -39,6 +37,10 @@ namespace DockerYoutubeDL.DAL
             modelBuilder.Entity<DownloadTask>()
                 .Property(x => x.DateAdded)
                 .IsRequired();
+            modelBuilder.Entity<DownloadTask>()
+                .HasMany<DownloadResult>(x => x.DownloadResult)
+                .WithOne(x => x.DownloadTask)
+                .OnDelete(DeleteBehavior.Cascade);
 
             // Configuration of the DownloadResult table.
             modelBuilder.Entity<DownloadResult>()
@@ -47,22 +49,7 @@ namespace DockerYoutubeDL.DAL
                 .Property(x => x.Id)
                 .IsRequired();
             modelBuilder.Entity<DownloadResult>()
-                .Property(x => x.IdentifierDownloader)
-                .IsRequired();
-            modelBuilder.Entity<DownloadResult>()
-                .Property(x => x.IdentifierDownloadTask)
-                .IsRequired();
-            modelBuilder.Entity<DownloadResult>()
-                .Property(x => x.Url)
-                .IsRequired();
-            modelBuilder.Entity<DownloadResult>()
                 .Property(x => x.Index)
-                .IsRequired();
-            modelBuilder.Entity<DownloadResult>()
-                .Property(x => x.IsPartOfPlaylist)
-                .IsRequired();
-            modelBuilder.Entity<DownloadResult>()
-                .Property(x => x.VideoIdentifier)
                 .IsRequired();
         }
     }

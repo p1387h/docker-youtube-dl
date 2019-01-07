@@ -3,13 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace DockerYoutubeDL.DAL
+namespace DockerYoutubeDL.Models
 {
-    public class DownloadResult
+    public class YoutubeDlOutputInfo
     {
-        public Guid Id { get; set; }
-        public string PathToFile { get; set; }
-        public bool WasDownloaded { get; set; }
+        public Guid DownloadTaskIdentifier { get; set; }
+        public Guid DownloadResultIdentifier { get; set; }
+        public Guid DownloaderIdentifier { get; set; }
         public int Index { get; set; }
 
         public string VideoIdentifier { get; set; }
@@ -19,7 +19,5 @@ namespace DockerYoutubeDL.DAL
 
         public string Message { get; set; }
         public bool HasError { get; set; }
-
-        public DownloadTask DownloadTask { get; set; }
     }
 }

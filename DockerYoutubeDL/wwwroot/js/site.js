@@ -127,13 +127,19 @@ $(document).ready(function () {
         connection.invoke("Pong");
     });
 
-    connection.on("ReceivedDownloadInfo", (downloadResult) => {
-        console.log({ state: "Info received", result: downloadResult });
+    connection.on("ReceivedDownloadInfo", (outputInfo) => {
+        console.log({ state: "Info received", outputInfo: outputInfo });
 
-        let guid = downloadResult.identifierDownloadTask;
+        let guid = outputInfo.downloadTaskIdentifier;
         let container = $("#containerDownloadInfo_" + guid);
         container.children("div").hide();
         container.find("#containerDownloadInfoText_" + guid).show().find("div[class='infoTextContainer']").text("Gathering information...");
+    });
+
+    connection.on("DownloadFailed", (outputInfo) => {
+        console.log({ state: "Failed", outputInfo: outputInfo });
+
+
     });
 
     connection.on("DownloadStarted", (taskIdentifier, taskResultIdentifier) => {
@@ -179,18 +185,6 @@ $(document).ready(function () {
         container.children("div").hide();
         container.find("#containerDownloadInfoButtonDownload_" + guid).show()
             .find("a").attr("href", "./download?taskIdentifier=" + guid + "&taskResultIdentifier=" + taskResultIdentifier);
-    });
-
-    connection.on("DownloadFailed", (taskIdentifier) => {
-        console.log({ state: "Failed", task: taskIdentifier });
-
-        
-    });
-
-    connection.on("DownloadProblem", (taskIdentifier, message) => {
-        console.log({ state: "Problem", task: taskIdentifier, message: message });
-
-
     });
 
     connection.on("DownloaderError", (taskIdentifier) => {

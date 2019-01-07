@@ -2,6 +2,7 @@
 using DockerYoutubeDL.SignalR;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -30,17 +31,16 @@ namespace DockerYoutubeDL.Services
         private DownloadPathGenerator _pathGenerator;
         private NotificationService _notification;
 
-        private int _waitTimeSeconds = 10;
+        private int _waitTimeBetweenDownloadChecksSeconds = 10;
 
-        private string _currentDownloadVideoIdentifier = null;
         // Percentages are 0-100.
-        private double _prevPercentage = 0;
         private double _percentageMinDifference = 10;
 
         private Guid _infoDownloadProcessOwner = new Guid();
         private Guid _mainDownloadProcessOwner = new Guid();
         private Process _infoDownloadProcess = null;
         private Process _mainDownloadProcess = null;
+        private bool _wasKilledByDisconnect = false;
 
         public DownloadBackgroundService(
             IDesignTimeDbContextFactory<DownloadContext> factory,
@@ -77,10 +77,11 @@ namespace DockerYoutubeDL.Services
 
                     _logger.LogDebug("Checking for pending download task...");
 
-                    if (db.DownloadTask.Any())
+                    if (db.DownloadTask.Any(x => !x.WasDownloaded))
                     {
                         // Next task is the one that was queued earliest and was not yet downloaded. 
                         var nextTask = db.DownloadTask
+                            .Where(x => !x.WasDownloaded)
                             .Select(x => new Tuple<DownloadTask, TimeSpan>(x, now.Subtract(x.DateAdded)))
                             .OrderByDescending(x => x.Item2)
                             .FirstOrDefault()
@@ -89,6 +90,7 @@ namespace DockerYoutubeDL.Services
                         _logger.LogDebug($"Next download: Downloader={nextTask.Downloader}, Url={nextTask.Url}, Id={nextTask.Id}");
 
                         await this.ExecuteDownloadTaskAsync(nextTask.Id, stoppingToken);
+
                         hasDownloaded = true;
                     }
                 }
@@ -96,26 +98,28 @@ namespace DockerYoutubeDL.Services
                 // Don't wait inbetween downloads if more are queued.
                 if (!hasDownloaded)
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(_waitTimeSeconds), stoppingToken);
+                    await Task.Delay(TimeSpan.FromSeconds(_waitTimeBetweenDownloadChecksSeconds), stoppingToken);
                 }
             }
         }
 
         private async Task ExecuteDownloadTaskAsync(Guid downloadTaskId, CancellationToken stoppingToken)
         {
+            // ProcessStartInformation that are needed for invoking youtube-dl.
             var infoProcessInfo = await this.GenerateInfoProcessStartInfoAsync(downloadTaskId);
             var mainProcessInfo = await this.GenerateMainProcessStartInfoAsync(downloadTaskId);
-            var continueWithMainDownload = await Task.Run(async () => await this.InfoDownloadProcessAsync(infoProcessInfo, downloadTaskId), stoppingToken);
-            
-            // There is the possibility of the video not being available.
-            if(continueWithMainDownload)
-            {
-                await Task.Run(async () => await this.MainDownloadProcessAsync(mainProcessInfo, downloadTaskId), stoppingToken);
-            }
 
-            // Remove download task in order to not download it again.
-            // If not removed this would cause an endless loop.
-            await this.RemoveDownloadTaskAsync(downloadTaskId);
+            // Download files and notify user.
+            await this.InfoDownloadProcessAsync(infoProcessInfo, downloadTaskId);
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            await this.MainDownloadProcessAsync(mainProcessInfo, downloadTaskId);
+
+            // Db clean up.
+            await this.MarkDownloadTaskAsDownloadedAsync(downloadTaskId);
+            await this.MarkPossibleDownloadResultsAsDownloadedAsync(downloadTaskId);
+
+            // Reset any set flag.
+            _wasKilledByDisconnect = false;
         }
 
         private async Task<ProcessStartInfo> GenerateInfoProcessStartInfoAsync(Guid downloadTaskId)
@@ -135,7 +139,7 @@ namespace DockerYoutubeDL.Services
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
-                    Arguments = $"--no-call-home -j {downloadTask.Url}"
+                    Arguments = $"--no-call-home --dump-json --ignore-errors {downloadTask.Url}"
                 };
 
                 return processInfo;
@@ -154,6 +158,7 @@ namespace DockerYoutubeDL.Services
                 var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadTask.Downloader, downloadTask.Id).ToString();
                 var ffmpegLocation = _config.GetValue<string>("FfmpegLocation");
                 var youtubeDlLocation = _config.GetValue<string>("YoutubeDlLocation");
+                var maxFileNameLength = _config.GetValue<int>("MaxFileNameLength");
 
                 var processInfo = new ProcessStartInfo(youtubeDlLocation)
                 {
@@ -166,10 +171,11 @@ namespace DockerYoutubeDL.Services
                 var arguments = new List<string>()
                 {
                     "--no-call-home",
+                    "--ignore-errors",
                     "--ffmpeg-location",
                     $"{ffmpegLocation}",
                     "-o",
-                    Path.Combine(downloadFolder, $"%(id)s{_pathGenerator.NameDilimiter}%(title)s.%(ext)s").ToString(),
+                    Path.Combine(downloadFolder, $"%(id)s{_pathGenerator.NameDilimiter}%(title)#0.{maxFileNameLength}s.%(ext)s").ToString(),
                 };
 
                 // Depending on the chosen settings, different types of arguments must be
@@ -205,97 +211,149 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task<bool> InfoDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
+        private async Task InfoDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
         {
-            var continueWithMainDownload = true;
+            // Playlist indices start at 1.
+            var currentIndex = 1;
             var resetEvent = new AutoResetEvent(false);
 
             try
             {
+                // Mark the current owner such that the process can be killed.
                 using (var db = _factory.CreateDbContext(new string[0]))
                 {
-                    var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                    _infoDownloadProcessOwner = downloadTask.Downloader;
-                    _infoDownloadProcess = new Process()
-                    {
-                        StartInfo = processInfo,
-                        EnableRaisingEvents = true
-                    };
+                    _infoDownloadProcessOwner = (await db.DownloadTask.FindAsync(downloadTaskId)).Downloader;
+                }
 
-                    _infoDownloadProcess.Exited += (s, e) =>
+                _infoDownloadProcess = new Process()
+                {
+                    StartInfo = processInfo,
+                    EnableRaisingEvents = true
+                };
+                _infoDownloadProcess.Exited += (s, e) =>
+                {
+                    // Prevent exceptions by only allowing non killed processes to continue.
+                    if (!_wasKilledByDisconnect)
                     {
-                        resetEvent.Set();
-                    };
-                    _infoDownloadProcess.ErrorDataReceived += (s, e) =>
-                    {
-                        if (e.Data != null)
+                        // Unavailable videos do not return the name of their playlist, thus not setting the 
+                        // flag correctly. This ensures that all flags are set accordingly.
+                        using (var db = _factory.CreateDbContext(new string[0]))
                         {
-                            _logger.LogDebug(e.Data);
+                            var downloadResults = db.DownloadResult
+                                .Include(x => x.DownloadTask)
+                                .Where(x => x.DownloadTask.Id == downloadTaskId)
+                                .ToList();
+                            downloadResults.ForEach(x => x.IsPartOfPlaylist = downloadResults.Count > 1);
 
-                            var regexVideoProblem = new Regex(@"^(?<type>WARNING):\s(?<message>.*)$|^(?<type>ERROR):\s(?<message>.*)$");
-                            var matchVideoProblem = regexVideoProblem.Match(e.Data);
+                            db.SaveChanges();
+                        }
+                    }
 
-                            if (matchVideoProblem.Success)
+                    resetEvent.Set();
+                };
+                _infoDownloadProcess.ErrorDataReceived += (s, e) =>
+                {
+                    if (e.Data != null)
+                    {
+                        _logger.LogDebug(e.Data);
+
+                        var regexVideoProblem = new Regex(@"^ERROR:\s(?<message>.*)$");
+                        var matchVideoProblem = regexVideoProblem.Match(e.Data);
+
+                        if (matchVideoProblem.Success)
+                        {
+                            var message = matchVideoProblem.Groups["message"].Value;
+
+                            // An unavailable video must still be marked in the db (no url but can be accessed by the index).
+                            using (var db = _factory.CreateDbContext(new string[0]))
                             {
-                                var message = matchVideoProblem.Groups["message"].Value;
-                                var type = matchVideoProblem.Groups["type"].Value;
-
-                                Task.Run(async () => await _notification.NotifyClientAboutDownloadProblemAsync(downloadTaskId, message));
-
-                                // An error causes the task to completely fail.
-                                if (type.Equals("ERROR"))
+                                // An error means a video is unavailable and can not be downloaded.
+                                var result = new DownloadResult()
                                 {
-                                    Task.Run(async () => await _notification.NotifyClientAboutFailedDownloadAsync(downloadTaskId));
+                                    DownloadTask = db.DownloadTask.Find(downloadTaskId),
+                                    Index = currentIndex,
+                                    HasError = true,
+                                    Message = message
+                                };
 
-                                    // Do NOT continue with the main download process since a major error occurrred.
-                                    continueWithMainDownload = false;
-                                }
+                                db.DownloadResult.Add(result);
+                                db.DownloadTask.Find(downloadTaskId).DownloadResult.Add(result);
+                                db.SaveChanges();
+
+                                _logger.LogDebug($"Error Info received and added to db: Index={result.Index}, Message={result.Message}");
+
+                                // Notify the client about the error. Only do this AFTER the db saved the index of the result!
+                                var outputInfo = new YoutubeDlOutputInfo()
+                                {
+                                    DownloadResultIdentifier = result.Id,
+                                    DownloadTaskIdentifier = result.DownloadTask.Id,
+                                    DownloaderIdentifier = result.DownloadTask.Downloader,
+                                    Index = result.Index,
+                                    HasError = result.HasError,
+                                    Message = result.Message,
+                                };
+                                Task.Run(async () => await _notification.NotifyClientAboutFailedDownloadAsync(outputInfo));
                             }
+
+                            // Index must be incremented for unavailable videos as well!
+                            currentIndex++;
                         }
-                        else
-                        {
-                            _logger.LogDebug("Received stdErr download data was null.");
-                        }
-                    };
-                    _infoDownloadProcess.OutputDataReceived += (s, e) =>
+                    }
+                };
+                _infoDownloadProcess.OutputDataReceived += (s, e) =>
+                {
+                    if (e.Data != null)
                     {
-                        if (e.Data != null)
+                        var template = JsonConvert.DeserializeObject<YoutubeDlOutputTemplate>(e.Data);
+
+                        using (var db = _factory.CreateDbContext(new string[0]))
                         {
-                            var template = JsonConvert.DeserializeObject<YoutubeDlOutputTemplate>(e.Data);
+                            // An error means a video is unavailable and can not be downloaded.
                             var result = new DownloadResult()
                             {
-                                IdentifierDownloader = downloadTask.Downloader,
-                                IdentifierDownloadTask = downloadTask.Id,
-                                Index = (string.IsNullOrEmpty(template.playlist_index)) ? 0 : Int32.Parse(template.playlist_index),
+                                DownloadTask = db.DownloadTask.Find(downloadTaskId),
                                 Url = template.webpage_url,
-                                IsPartOfPlaylist = !string.IsNullOrEmpty(template.playlist_index),
                                 Name = template.title,
-                                VideoIdentifier = template.id
+                                VideoIdentifier = template.id,
+                                Index = currentIndex,
+                                HasError = false,
+                                IsPartOfPlaylist = !string.IsNullOrEmpty(template.playlist)
                             };
 
                             db.DownloadResult.Add(result);
+                            db.DownloadTask.Find(downloadTaskId).DownloadResult.Add(db.DownloadResult.Find(result.Id));
                             db.SaveChanges();
 
-                            _logger.LogDebug($"Info received: Name={result.Name}, Index={result.Index}, IsPartOfPlaylist={result.IsPartOfPlaylist}");
-
-                            Task.Run(async () => { await _notification.NotifyClientAboutReceivedDownloadInformationAsync(result); });
+                            // Notify the client about the info. Only do this AFTER the db saved the index of the result!
+                            var outputInfo = new YoutubeDlOutputInfo()
+                            {
+                                DownloadResultIdentifier = result.Id,
+                                DownloadTaskIdentifier = result.DownloadTask.Id,
+                                DownloaderIdentifier = result.DownloadTask.Downloader,
+                                Index = result.Index,
+                                VideoIdentifier = result.VideoIdentifier,
+                                Url = result.Url,
+                                Name = result.Name,
+                                IsPartOfPlaylist = result.IsPartOfPlaylist
+                            };
+                            Task.Run(async () => { await _notification.NotifyClientAboutReceivedDownloadInformationAsync(outputInfo); });
                         }
-                        else
-                        {
-                            _logger.LogDebug("Received info data was null.");
-                        }
-                    };
 
-                    _infoDownloadProcess.Start();
-                    // Enables the asynchronus callback function to receive the redirected data.
-                    _infoDownloadProcess.BeginOutputReadLine();
-                    _infoDownloadProcess.BeginErrorReadLine();
+                        // Increment index for further entries.
+                        currentIndex++;
+                    }
+                };
 
-                    // Wait for the process to finish.
-                    _logger.LogDebug("Waiting for the info download process to finish...");
-                    resetEvent.WaitOne();
-                    _logger.LogDebug($"Finished downloading information.");
-                }
+                _infoDownloadProcess.Start();
+                // Enables the asynchronus callback function to receive the redirected data.
+                _infoDownloadProcess.BeginOutputReadLine();
+                _infoDownloadProcess.BeginErrorReadLine();
+
+                // Wait for the process to finish.
+                _logger.LogDebug("Waiting for the info download process to finish...");
+                resetEvent.WaitOne();
+                _logger.LogDebug($"Finished downloading information.");
+
             }
             catch (Exception e)
             {
@@ -308,13 +366,15 @@ namespace DockerYoutubeDL.Services
                 _infoDownloadProcessOwner = new Guid();
                 _infoDownloadProcess = null;
             }
-
-            return continueWithMainDownload;
         }
 
         private async Task MainDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
         {
+            // Playlist indices start at 1.
+            var currentIndex = 1;
             var resetEvent = new AutoResetEvent(false);
+            string currentDownloadVideoIdentifier = null;
+            var prevPercentage = 0.0;
 
             try
             {
@@ -331,12 +391,26 @@ namespace DockerYoutubeDL.Services
 
                 _mainDownloadProcess.Exited += (s, e) =>
                 {
-                    // The last download of a playlist does not trigger the notification of the output
-                    // (Same goes for a simple download).
-                    Task.Run(async () => await _notification.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
-                    Task.Run(async () => await this.MarkDownloadResultAsDownloadedAsync(downloadTaskId, _currentDownloadVideoIdentifier));
+                    // Prevent exceptions by only allowing non killed processes to continue.
+                    if (!_wasKilledByDisconnect)
+                    {
+                        // The last download of a playlist does not trigger the notification of the output
+                        // (Same goes for a simple download).
+                        this.SavePathForDownloadResult(downloadTaskId, currentDownloadVideoIdentifier);
+                        this.SendFinishedNotification(downloadTaskId, currentDownloadVideoIdentifier);
+                    }
 
                     resetEvent.Set();
+                };
+                // Only log the error, since this output includes the error and warning messages of 
+                // youtube-dl which are handled in the info gathering process. Therefor sending a
+                // downloader error to the user is not advised.
+                _mainDownloadProcess.ErrorDataReceived += (s, e) =>
+                {
+                    if (e.Data != null)
+                    {
+                        _logger.LogError("Main download process threw Error: " + e.Data);
+                    }
                 };
                 _mainDownloadProcess.OutputDataReceived += (s, e) =>
                 {
@@ -355,13 +429,44 @@ namespace DockerYoutubeDL.Services
 
                         if (matchVideoDownloadPlaylist.Success)
                         {
-                            Task.Run(async () => await _notification.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
-                            Task.Run(async () => await this.MarkDownloadResultAsDownloadedAsync(downloadTaskId, _currentDownloadVideoIdentifier));
+                            var prevIndex = currentIndex;
+                            currentIndex = Int32.Parse(matchVideoDownloadPlaylist.Groups["currentIndex"].Value);
+
+                            // The next index always indicates that the previous entry was downloaded.
+                            if (currentIndex - 1 > 0)
+                            {
+                                this.SavePathForDownloadResult(downloadTaskId, currentDownloadVideoIdentifier);
+                                this.SendFinishedNotification(downloadTaskId, currentDownloadVideoIdentifier);
+                            }
                         }
                         else if (matchVideoWebPage.Success)
                         {
-                            _currentDownloadVideoIdentifier = matchVideoWebPage.Groups["videoIdentifier"].Value;
-                            Task.Run(async () => await _notification.NotifyClientAboutStartedDownloadAsync(downloadTaskId, _currentDownloadVideoIdentifier));
+                            currentDownloadVideoIdentifier = matchVideoWebPage.Groups["videoIdentifier"].Value;
+
+                            // --dump-json in the info process is unable to extract the video identifier for a 
+                            // unavailable video. Therefor this must be inserted here.
+                            // NOTE:
+                            // The identifier stays null UNTIL the download action for the result itself if performed!
+                            using (var db = _factory.CreateDbContext(new string[0]))
+                            {
+                                // Index must be used since a failed result does NOT yet contain the video identifier!
+                                var result = db.DownloadResult
+                                    .Include(x => x.DownloadTask)
+                                    .Single(x => x.DownloadTask.Id == downloadTaskId && x.Index == currentIndex);
+
+                                if (string.IsNullOrEmpty(result.VideoIdentifier))
+                                {
+                                    result.VideoIdentifier = currentDownloadVideoIdentifier;
+                                }
+
+                                // Skip notifications for unavailable videos.
+                                if (!result.HasError)
+                                {
+                                    Task.Run(async () => await _notification.NotifyClientAboutStartedDownloadAsync(downloadTaskId, result.Id));
+                                }
+
+                                db.SaveChanges();
+                            }
                         }
                         else if (matchVideoDownloadProgress.Success)
                         {
@@ -369,20 +474,31 @@ namespace DockerYoutubeDL.Services
                             var percentageDouble = Double.Parse(percentage.Replace(',', '.'), CultureInfo.InvariantCulture);
 
                             // Do not flood the client with messages.
-                            if (percentageDouble - _prevPercentage >= _percentageMinDifference)
+                            if (percentageDouble - prevPercentage >= _percentageMinDifference)
                             {
-                                _prevPercentage = percentageDouble;
-                                Task.Run(async () => await _notification.NotifyClientAboutDownloadProgressAsync(downloadTaskId, _currentDownloadVideoIdentifier, percentageDouble));
+                                prevPercentage = percentageDouble;
+
+                                using (var db = _factory.CreateDbContext(new string[0]))
+                                {
+                                    var result = db.DownloadResult
+                                        .Include(x => x.DownloadTask)
+                                        .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(currentDownloadVideoIdentifier));
+
+                                    Task.Run(async () => await _notification.NotifyClientAboutDownloadProgressAsync(downloadTaskId, result.Id, percentageDouble));
+                                }
                             }
                         }
                         else if (matchVideoConversion.Success)
                         {
-                            Task.Run(async () => await _notification.NotifyClientAboutDownloadConversionAsync(downloadTaskId, _currentDownloadVideoIdentifier));
+                            using (var db = _factory.CreateDbContext(new string[0]))
+                            {
+                                var result = db.DownloadResult
+                                    .Include(x => x.DownloadTask)
+                                    .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(currentDownloadVideoIdentifier));
+
+                                Task.Run(async () => await _notification.NotifyClientAboutDownloadConversionAsync(downloadTaskId, result.Id));
+                            }
                         }
-                    }
-                    else
-                    {
-                        _logger.LogDebug("Received stdOut download data was null.");
                     }
                 };
 
@@ -405,47 +521,140 @@ namespace DockerYoutubeDL.Services
             }
             finally
             {
-                _currentDownloadVideoIdentifier = null;
-                _prevPercentage = 0;
                 _mainDownloadProcessOwner = new Guid();
                 _mainDownloadProcess = null;
             }
         }
 
-        private async Task RemoveDownloadTaskAsync(Guid id)
-        {
-            using (var db = _factory.CreateDbContext(new string[0]))
-            {
-                var downloadTask = await db.DownloadTask.FindAsync(id);
-                db.DownloadTask.Remove(downloadTask);
-
-                await db.SaveChangesAsync();
-            }
-        }
-
-        private async Task MarkDownloadResultAsDownloadedAsync(Guid downloadTaskId, string videoIdentifier)
+        private void SavePathForDownloadResult(Guid downloadTaskId, string videoIdentifier)
         {
             using (var db = _factory.CreateDbContext(new string[0]))
             {
                 try
                 {
-                    var downloadResult = db.DownloadResult.First(x => x.IdentifierDownloadTask == downloadTaskId && x.VideoIdentifier == videoIdentifier);
-                    downloadResult.WasDownloaded = true;
+                    var downloadResult = db.DownloadResult
+                    .Include(x => x.DownloadTask)
+                    .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(videoIdentifier));
+                    var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadResult.DownloadTask.Downloader, downloadResult.DownloadTask.Id);
+
+                    // Find the downloaded file. Only possible if no error occurred.
+                    if (!downloadResult.HasError && Directory.Exists(downloadFolder))
+                    {
+                        foreach (string filePath in Directory.GetFiles(downloadFolder))
+                        {
+                            var fileVideoIdentifier = Path.GetFileNameWithoutExtension(filePath).Split(_pathGenerator.NameDilimiter)[0];
+
+                            if (fileVideoIdentifier.Equals(downloadResult.VideoIdentifier))
+                            {
+                                // Set the file path in order to retrieve the file later on.
+                                downloadResult.PathToFile = filePath;
+                                db.SaveChanges();
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, $"Error while tupdating the file path of task id={downloadTaskId}, videoIdentifier={videoIdentifier}.");
+                }
+            }
+        }
+
+        private void SendFinishedNotification(Guid downloadTaskId, string videoIdentifier)
+        {
+            // Skip notifications for unavailable videos.
+            using (var db = _factory.CreateDbContext(new string[0]))
+            {
+                try
+                {
+                    var result = db.DownloadResult
+                        .Include(x => x.DownloadTask)
+                        .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(videoIdentifier));
+                    var sendNotification = !result.HasError;
+
+                    if (sendNotification)
+                    {
+                        Task.Run(async () => await _notification.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, result.Id));
+                    }
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, $"Error while sending a finished notification for task {downloadTaskId}.");
+                }
+            }
+        }
+
+        private async Task MarkPossibleDownloadResultsAsDownloadedAsync(Guid downloadTaskId)
+        {
+            using (var db = _factory.CreateDbContext(new string[0]))
+            {
+                try
+                {
+                    var downloadResults = db.DownloadResult
+                        .Include(x => x.DownloadTask)
+                        .Where(x => x.DownloadTask.Id == downloadTaskId)
+                        .Where(x => !x.HasError)
+                        .ToList();
+                    downloadResults.ForEach(x => x.WasDownloaded = true);
 
                     await db.SaveChangesAsync();
                 }
                 catch (Exception e)
                 {
-                    _logger.LogError(e, $"Error while Marking the video {videoIdentifier} of {downloadTaskId} as finished.");
+                    _logger.LogError(e, $"Error while marking the downloadable results of {downloadTaskId} as downloaded.");
                 }
             }
         }
 
+        private async Task MarkDownloadTaskAsDownloadedAsync(Guid downloadTaskId)
+        {
+            try
+            {
+                using (var db = _factory.CreateDbContext(new string[0]))
+                {
+                    var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
+                    downloadTask.WasDownloaded = true;
+                    await db.SaveChangesAsync();
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, $"Error while marking {downloadTaskId} as downloaded.");
+            }
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         public async Task HandleDisconnectAsync(Guid userIdentifier)
         {
+            // 8 should be enough since the time inbetween stacks n^n.
             int maxRetryCount = 8;
 
-            _logger.LogDebug($"Handling the DisconnectNotification of user {userIdentifier}.");
+            _logger.LogDebug($"Handling the disconnect of user {userIdentifier}.");
+
+            // Set the flag indicating that the processes are killed manually.
+            _wasKilledByDisconnect = true;
+
+            _logger.LogDebug($"Killing conversion processes.");
+
+            // Kill all conversion processes (avconv, ffmpeg) that might block the deletion 
+            // of files.
+            Process.GetProcessesByName("ffmpeg").ToList().ForEach(x => x.Kill());
+            Process.GetProcessesByName("avconv").ToList().ForEach(x => x.Kill());
+
+            _logger.LogDebug($"Killing processes of user {userIdentifier}.");
 
             // Only kill the processes if they are associated with the current user.
             if (_infoDownloadProcessOwner == userIdentifier)
@@ -460,6 +669,8 @@ namespace DockerYoutubeDL.Services
             _logger.LogDebug($"Deleting all entries (db/files) of user {userIdentifier}.");
 
             // Polly must be used since a disconnect interferes with all current operations.
+            // The db entries must be reset first in order to prevent the main download from
+            // queuing another one of them.
             await this.DeleteDbEntriesAsync(userIdentifier, maxRetryCount);
             await this.DeleteDownloadFilesAsync(userIdentifier, maxRetryCount);
         }
@@ -486,7 +697,8 @@ namespace DockerYoutubeDL.Services
                         var toDeleteTasks = db.DownloadTask
                             .Where(x => x.Downloader == userIdentifier);
                         var toDeleteResults = db.DownloadResult
-                            .Where(x => x.IdentifierDownloader == userIdentifier);
+                            .Include(x => x.DownloadTask)
+                            .Where(x => x.DownloadTask.Downloader == userIdentifier);
                         db.DownloadTask.RemoveRange(toDeleteTasks);
                         db.DownloadResult.RemoveRange(toDeleteResults);
 
@@ -520,11 +732,15 @@ namespace DockerYoutubeDL.Services
                     try
                     {
                         var folderPath = _pathGenerator.GenerateDownloadFolderPath(userIdentifier);
-                        Directory.Delete(folderPath, true);
+
+                        if (Directory.Exists(folderPath))
+                        {
+                            Directory.Delete(folderPath, true);
+                        }
 
                         _logger.LogDebug($"Successfully removed files of user {userIdentifier}");
                     }
-                    catch (IOException e)
+                    catch (IOException)
                     {
                         return Task.FromResult<bool>(false);
                     }

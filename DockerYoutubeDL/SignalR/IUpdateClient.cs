@@ -1,4 +1,5 @@
 ﻿using DockerYoutubeDL.DAL;
+using DockerYoutubeDL.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,21 +11,15 @@ namespace DockerYoutubeDL.SignalR
     {
         // Id of the task (received when it got queued up) and id of the result corresponding to the task.
 
-        Task ReceivedDownloadInfo(DownloadResult downloadResult);
+        // Send from info process.
+        Task ReceivedDownloadInfo(YoutubeDlOutputInfo outputInfo);
+        Task DownloadFailed(YoutubeDlOutputInfo outputInfo);
 
+        // Send from main process.
         Task DownloadStarted(Guid taskIdentifier, Guid taskResultIdentifier);
-
         Task DownloadProgress(Guid taskIdentifier, Guid taskResultIdentifier, double percentage);
-
         Task DownloadConversion(Guid taskIdentifier, Guid taskResultIdentifier);
-        
         Task DownloadFinished(Guid taskIdentifier, Guid taskResultIdentifier);
-
-        Task DownloadFailed(Guid taskIdentifier);
-
-        // Problem (error or warning) in youtubedl. Causes the download to fail.
-        Task DownloadProblem(Guid taskIdentifier, string message);
-
         // Error in the main download process. Causes a whole download task to fail.
         Task DownloaderError(Guid taskIdentifier);
 

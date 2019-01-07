@@ -11,5 +11,6 @@ namespace DockerYoutubeDL.Models
         public string webpage_url { get; set; }
         public string playlist_index { get; set; }
         public string title { get; set; }
+        public string playlist { get; set; }
     }
 }
