@@ -26,8 +26,6 @@ namespace DockerYoutubeDL.Services
         private DownloadPathGenerator _pathGenerator;
         private NotificationService _notification;
 
-        private int _waitTimeBetweenDownloadChecksSeconds = 10;
-
         private Process _infoDownloadProcess = null;
 
         public InfoBackgroundService(
@@ -90,7 +88,7 @@ namespace DockerYoutubeDL.Services
                 // Don't wait inbetween downloads if more are queued.
                 if (!hasDownloaded)
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(_waitTimeBetweenDownloadChecksSeconds), stoppingToken);
+                    await Task.Delay(TimeSpan.FromSeconds(_config.GetValue<int>("InfoCheckIntervalSeconds")), stoppingToken);
                 }
             }
         }

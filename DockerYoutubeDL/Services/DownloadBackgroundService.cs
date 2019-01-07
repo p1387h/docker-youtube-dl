@@ -31,8 +31,6 @@ namespace DockerYoutubeDL.Services
         private DownloadPathGenerator _pathGenerator;
         private NotificationService _notification;
 
-        private int _waitTimeBetweenDownloadChecksSeconds = 10;
-
         // Percentages are 0-100.
         private double _percentageMinDifference = 10;
 
@@ -104,7 +102,7 @@ namespace DockerYoutubeDL.Services
                 // Don't wait inbetween downloads if more are queued.
                 if (!hasDownloaded)
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(_waitTimeBetweenDownloadChecksSeconds), stoppingToken);
+                    await Task.Delay(TimeSpan.FromSeconds(_config.GetValue<int>("DownloadCheckIntervalSeconds")), stoppingToken);
                 }
             }
         }
