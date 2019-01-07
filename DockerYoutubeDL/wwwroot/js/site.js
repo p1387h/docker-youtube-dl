@@ -172,14 +172,20 @@ $(document).ready(function () {
         container.find(".progress-bar").text("Converting... (This could take a while)");
     });
 
-    connection.on("DownloadFinished", (taskIdentifier, taskResultIdentifier) => {
-        console.log({ state: "Finished", task: taskIdentifier, result: taskResultIdentifier });
+    connection.on("DownloadResultFinished", (taskIdentifier, taskResultIdentifier) => {
+        console.log({ state: "ResultFinished", task: taskIdentifier, result: taskResultIdentifier });
 
         let guid = taskIdentifier;
         let container = $("#containerDownloadInfo_" + guid);
         container.children("div").hide();
         container.find("#containerDownloadInfoButtonDownload_" + guid).show()
             .find("a").attr("href", "./download?taskIdentifier=" + guid + "&taskResultIdentifier=" + taskResultIdentifier);
+    });
+
+    connection.on("DownloadTaskFinished", (taskIdentifier) => {
+        console.log({ state: "TaskFinished", task: taskIdentifier });
+
+
     });
 
     connection.on("DownloadInterrupted", (taskIdentifier) => {

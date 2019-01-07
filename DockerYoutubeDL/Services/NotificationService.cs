@@ -49,7 +49,7 @@ namespace DockerYoutubeDL.Services
                 });
         }
 
-        public async Task NotifyClientAboutReceivedDownloadInformationAsync(YoutubeDlOutputInfo outputInfo)
+        public async Task NotifyClientsAboutReceivedDownloadInformationAsync(YoutubeDlOutputInfo outputInfo)
         {
             // Notify the matching client about the received download information.
             await _notificationPolicy.ExecuteAsync(
@@ -66,7 +66,7 @@ namespace DockerYoutubeDL.Services
             );
         }
 
-        public async Task NotifyClientAboutFailedDownloadAsync(YoutubeDlOutputInfo outputInfo)
+        public async Task NotifyClientsAboutFailedDownloadAsync(YoutubeDlOutputInfo outputInfo)
         {
             // Notify the matching client about the failed download.
             await _notificationPolicy.ExecuteAsync(
@@ -83,7 +83,7 @@ namespace DockerYoutubeDL.Services
             );
         }
 
-        public async Task NotifyClientAboutStartedDownloadAsync(Guid downloadTaskId, Guid downloadResultId)
+        public async Task NotifyClientsAboutStartedDownloadAsync(Guid downloadTaskId, Guid downloadResultId)
         {
             // Notify the matching client about the started download.
             await _notificationPolicy.ExecuteAsync(
@@ -100,7 +100,7 @@ namespace DockerYoutubeDL.Services
             );
         }
 
-        public async Task NotifyClientAboutDownloadProgressAsync(Guid downloadTaskId, Guid downloadResultId, double percentage)
+        public async Task NotifyClientsAboutDownloadProgressAsync(Guid downloadTaskId, Guid downloadResultId, double percentage)
         {
             // Notify the matching client about the download progress.
             await _notificationPolicy.ExecuteAsync(
@@ -117,7 +117,7 @@ namespace DockerYoutubeDL.Services
             );
         }
 
-        public async Task NotifyClientAboutDownloadConversionAsync(Guid downloadTaskId, Guid downloadResultId)
+        public async Task NotifyClientsAboutDownloadConversionAsync(Guid downloadTaskId, Guid downloadResultId)
         {
             // Notify the matching client about the conversion of the file.
             await _notificationPolicy.ExecuteAsync(
@@ -134,24 +134,41 @@ namespace DockerYoutubeDL.Services
             );
         }
 
-        public async Task NotifyClientAboutFinishedDownloadAsync(Guid downloadTaskId, Guid downloadResultId)
+        public async Task NotifyClientsAboutFinishedDownloadTaskAsync(Guid downloadTaskId)
         {
             // Notify the matching client about the finished download.
             await _notificationPolicy.ExecuteAsync(
                 async (context) =>
                 {
-                    _logger.LogDebug($"Notifying clients about result with id={downloadResultId}.");
+                    _logger.LogDebug($"Notifying clients about finished task with id={downloadTaskId}.");
 
-                    await _hub.Clients.All.SendAsync(nameof(IUpdateClient.DownloadFinished), downloadTaskId, downloadResultId);
+                    await _hub.Clients.All.SendAsync(nameof(IUpdateClient.DownloadTaskFinished), downloadTaskId);
                 },
                 new Dictionary<string, object>()
                 {
-                    { "errorMessage", $"Error while notifying clients about result with id={downloadResultId}." }
+                    { "errorMessage", $"Error while notifying clients about finished task with id={downloadTaskId}." }
                 }
             );
         }
 
-        public async Task NotifyClientAboutInterruptedDownloadAsync(Guid downloadTaskId)
+        public async Task NotifyClientsAboutFinishedDownloadResultAsync(Guid downloadTaskId, Guid downloadResultId)
+        {
+            // Notify the matching client about the finished download.
+            await _notificationPolicy.ExecuteAsync(
+                async (context) =>
+                {
+                    _logger.LogDebug($"Notifying clients about finished result with id={downloadResultId}.");
+
+                    await _hub.Clients.All.SendAsync(nameof(IUpdateClient.DownloadResultFinished), downloadTaskId, downloadResultId);
+                },
+                new Dictionary<string, object>()
+                {
+                    { "errorMessage", $"Error while notifying clients about finished result with id={downloadResultId}." }
+                }
+            );
+        }
+
+        public async Task NotifyClientsAboutInterruptedDownloadAsync(Guid downloadTaskId)
         {
             // Notify the matching client about the finished download.
             await _notificationPolicy.ExecuteAsync(
@@ -168,7 +185,7 @@ namespace DockerYoutubeDL.Services
             );
         }
 
-        public async Task NotifyClientAboutDownloaderError(Guid downloadTaskId)
+        public async Task NotifyClientsAboutDownloaderError(Guid downloadTaskId)
         {
             // Notify the matching client about the failure.
             await _notificationPolicy.ExecuteAsync(

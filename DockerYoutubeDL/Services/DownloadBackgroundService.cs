@@ -196,11 +196,12 @@ namespace DockerYoutubeDL.Services
                     if (!_wasKilledByInterrupt)
                     {
                         this.MarkDownloadTaskAsDownloaded(downloadTaskId);
+                        Task.Run(async () => await _notification.NotifyClientsAboutFinishedDownloadTaskAsync(downloadTaskId));
 
                         // The last download of a playlist does not trigger the notification of the output
                         // (Same goes for a simple download).
                         this.SavePathForDownloadResult(downloadTaskId, currentDownloadVideoIdentifier);
-                        this.SendFinishedNotification(downloadTaskId, currentDownloadVideoIdentifier);
+                        this.SendDownloadResultFinishedNotification(downloadTaskId, currentDownloadVideoIdentifier);
                         this.MarkPossibleDownloadResultAsDownloaded(downloadTaskId, currentDownloadVideoIdentifier);
                     }
 
@@ -240,7 +241,7 @@ namespace DockerYoutubeDL.Services
                             if (currentIndex - 1 > 0)
                             {
                                 this.SavePathForDownloadResult(downloadTaskId, currentDownloadVideoIdentifier);
-                                this.SendFinishedNotification(downloadTaskId, currentDownloadVideoIdentifier);
+                                this.SendDownloadResultFinishedNotification(downloadTaskId, currentDownloadVideoIdentifier);
                                 this.MarkPossibleDownloadResultAsDownloaded(downloadTaskId, currentDownloadVideoIdentifier);
                             }
                         }
@@ -269,7 +270,7 @@ namespace DockerYoutubeDL.Services
                                     // Skip notifications for unavailable videos.
                                     if (!result.HasError)
                                     {
-                                        Task.Run(async () => await _notification.NotifyClientAboutStartedDownloadAsync(downloadTaskId, result.Id));
+                                        Task.Run(async () => await _notification.NotifyClientsAboutStartedDownloadAsync(downloadTaskId, result.Id));
                                     }
 
                                     db.SaveChanges();
@@ -298,7 +299,7 @@ namespace DockerYoutubeDL.Services
                                             .Include(x => x.DownloadTask)
                                             .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(currentDownloadVideoIdentifier));
 
-                                        Task.Run(async () => await _notification.NotifyClientAboutDownloadProgressAsync(downloadTaskId, result.Id, percentageDouble));
+                                        Task.Run(async () => await _notification.NotifyClientsAboutDownloadProgressAsync(downloadTaskId, result.Id, percentageDouble));
                                     }
                                     catch (Exception exception)
                                     {
@@ -317,7 +318,7 @@ namespace DockerYoutubeDL.Services
                                         .Include(x => x.DownloadTask)
                                         .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(currentDownloadVideoIdentifier));
 
-                                    Task.Run(async () => await _notification.NotifyClientAboutDownloadConversionAsync(downloadTaskId, result.Id));
+                                    Task.Run(async () => await _notification.NotifyClientsAboutDownloadConversionAsync(downloadTaskId, result.Id));
                                 }
                                 catch (Exception exception)
                                 {
@@ -343,7 +344,7 @@ namespace DockerYoutubeDL.Services
                 _logger.LogError(e, "Main download process threw an exception:");
 
                 resetEvent.Set();
-                await _notification.NotifyClientAboutDownloaderError(downloadTaskId);
+                await _notification.NotifyClientsAboutDownloaderError(downloadTaskId);
             }
             finally
             {
@@ -386,7 +387,7 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private void SendFinishedNotification(Guid downloadTaskId, string videoIdentifier)
+        private void SendDownloadResultFinishedNotification(Guid downloadTaskId, string videoIdentifier)
         {
             // Skip notifications for unavailable videos.
             using (var db = _factory.CreateDbContext(new string[0]))
@@ -400,7 +401,7 @@ namespace DockerYoutubeDL.Services
 
                     if (sendNotification)
                     {
-                        Task.Run(async () => await _notification.NotifyClientAboutFinishedDownloadAsync(downloadTaskId, result.Id));
+                        Task.Run(async () => await _notification.NotifyClientsAboutFinishedDownloadResultAsync(downloadTaskId, result.Id));
                     }
                 }
                 catch (Exception e)
@@ -471,7 +472,7 @@ namespace DockerYoutubeDL.Services
                 // Only mark the entries as interrupted. Don't delete any files or remove entries 
                 // from the db.
                 await this.MarkTaskAsInterruptedAsync(downloadTaskId);
-                await _notification.NotifyClientAboutInterruptedDownloadAsync(downloadTaskId);
+                await _notification.NotifyClientsAboutInterruptedDownloadAsync(downloadTaskId);
             }
             else
             {

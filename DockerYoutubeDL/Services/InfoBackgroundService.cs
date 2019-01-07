@@ -198,7 +198,7 @@ namespace DockerYoutubeDL.Services
                                         HasError = result.HasError,
                                         Message = result.Message,
                                     };
-                                    Task.Run(async () => await _notification.NotifyClientAboutFailedDownloadAsync(outputInfo));
+                                    Task.Run(async () => await _notification.NotifyClientsAboutFailedDownloadAsync(outputInfo));
                                 }
                                 catch (Exception exception)
                                 {
@@ -248,7 +248,7 @@ namespace DockerYoutubeDL.Services
                                     Name = result.Name,
                                     IsPartOfPlaylist = result.IsPartOfPlaylist
                                 };
-                                Task.Run(async () => { await _notification.NotifyClientAboutReceivedDownloadInformationAsync(outputInfo); });
+                                Task.Run(async () => { await _notification.NotifyClientsAboutReceivedDownloadInformationAsync(outputInfo); });
                             }
                             catch (Exception exception)
                             {
