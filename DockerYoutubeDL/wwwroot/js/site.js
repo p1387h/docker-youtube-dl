@@ -112,7 +112,7 @@ $(document).ready(function () {
             console.log("connected");
         } catch (err) {
             console.log(err);
-            setTimeout(() => start(), 2000);
+            setTimeout(() => start(), 500);
         }
     }
 
@@ -120,11 +120,6 @@ $(document).ready(function () {
 
     connection.onclose(async () => {
         await start();
-    });
-
-    connection.on("Ping", () => {
-        console.log("Replying to ping");
-        connection.invoke("Pong");
     });
 
     connection.on("ReceivedDownloadInfo", (outputInfo) => {

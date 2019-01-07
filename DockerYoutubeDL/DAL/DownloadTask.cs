@@ -11,7 +11,6 @@ namespace DockerYoutubeDL.DAL
     {
         public Guid Id { get; set; }
         public string Url { get; set; }
-        public Guid Downloader { get; set; }
         public DateTime DateAdded { get; set; }
         public AudioFormat AudioFormat { get; set; }
         public VideoFormat VideoFormat { get; set; }

@@ -35,21 +35,6 @@ namespace DockerYoutubeDL.Pages
 
         public void OnGet()
         {
-            this.Identifier = HttpContext.User.Identity.Name;
-
-            // User is visiting the site for the first time. Issue a cookie with an identifier.
-            if (string.IsNullOrEmpty(this.Identifier))
-            {
-                var identity = new ClaimsIdentity(new List<Claim>()
-                {
-                    new Claim(ClaimTypes.Name, Guid.NewGuid().ToString())
-                });
-                var principal = new ClaimsPrincipal(identity);
-
-                HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
-
-                _logger.LogDebug($"User {this.Identifier} was provided an authentication token.");
-            }
         }
 
         public async Task<ActionResult> OnPost([FromBody] DownloadInfoModel downloadInfo)
@@ -61,7 +46,6 @@ namespace DockerYoutubeDL.Pages
             {
                 var downloadTask = new DownloadTask()
                 {
-                    Downloader = new Guid(HttpContext.User.Identity.Name),
                     Url = downloadInfo.Url,
                     DateAdded = DateTime.Now,
                     AudioFormat = downloadInfo.AudioFormat,
@@ -73,7 +57,7 @@ namespace DockerYoutubeDL.Pages
 
                 result = new DownloadInfoModelResult(true, downloadTask.Id, downloadTask.Url);
 
-                _logger.LogInformation($"New DownloadTask added to the db: Downloader={downloadTask.Downloader}, Url={downloadTask.Url}, Id={downloadTask.Id}");
+                _logger.LogInformation($"New DownloadTask added to the db: Url={downloadTask.Url}, Id={downloadTask.Id}");
             }
             else
             {

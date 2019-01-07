@@ -25,21 +25,18 @@ namespace DockerYoutubeDL.Services
             this.NameDilimiter = "-----------";
         }
 
-        public string GenerateDownloadFolderPath(Guid downloaderIdentifier)
+        public string GenerateDownloadFolderPath()
         {
             var downloadRootFolder = _config.GetValue<string>("DownloadRootFolder");
-            var downloadFolderPath = Path.Combine(
-                downloadRootFolder,
-                downloaderIdentifier.ToString()
-            );
+            var downloadFolderPath = Path.Combine(downloadRootFolder);
 
             return downloadFolderPath;
         }
 
-        public string GenerateDownloadFolderPath(Guid downloaderIdentifier, Guid downloadTaskIdentifier)
+        public string GenerateDownloadFolderPath(Guid downloadTaskIdentifier)
         {
             var downloadFolderPath = Path.Combine(
-                this.GenerateDownloadFolderPath(downloaderIdentifier), 
+                this.GenerateDownloadFolderPath(), 
                 downloadTaskIdentifier.ToString()
             );
 

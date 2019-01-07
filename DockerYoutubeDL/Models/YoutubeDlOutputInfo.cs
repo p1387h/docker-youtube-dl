@@ -9,7 +9,6 @@ namespace DockerYoutubeDL.Models
     {
         public Guid DownloadTaskIdentifier { get; set; }
         public Guid DownloadResultIdentifier { get; set; }
-        public Guid DownloaderIdentifier { get; set; }
         public int Index { get; set; }
 
         public string VideoIdentifier { get; set; }

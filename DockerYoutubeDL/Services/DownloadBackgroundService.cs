@@ -36,11 +36,10 @@ namespace DockerYoutubeDL.Services
         // Percentages are 0-100.
         private double _percentageMinDifference = 10;
 
-        private Guid _infoDownloadProcessOwner = new Guid();
-        private Guid _mainDownloadProcessOwner = new Guid();
+        private Guid _currentDownloadTaskId = new Guid();
         private Process _infoDownloadProcess = null;
         private Process _mainDownloadProcess = null;
-        private bool _wasKilledByDisconnect = false;
+        private bool _wasKilledByInterrupt = false;
 
         public DownloadBackgroundService(
             IDesignTimeDbContextFactory<DownloadContext> factory,
@@ -87,8 +86,9 @@ namespace DockerYoutubeDL.Services
                             .FirstOrDefault()
                             .Item1;
 
-                        _logger.LogDebug($"Next download: Downloader={nextTask.Downloader}, Url={nextTask.Url}, Id={nextTask.Id}");
+                        _logger.LogDebug($"Next download: Url={nextTask.Url}, Id={nextTask.Id}");
 
+                        _currentDownloadTaskId = nextTask.Id;
                         await this.ExecuteDownloadTaskAsync(nextTask.Id);
 
                         hasDownloaded = true;
@@ -110,7 +110,7 @@ namespace DockerYoutubeDL.Services
             var mainProcessInfo = await this.GenerateMainProcessStartInfoAsync(downloadTaskId);
 
             // Download info.
-            if (!_wasKilledByDisconnect)
+            if (!_wasKilledByInterrupt)
             {
                 await this.InfoDownloadProcessAsync(infoProcessInfo, downloadTaskId);
 
@@ -120,13 +120,13 @@ namespace DockerYoutubeDL.Services
             }
 
             // Download selected files.
-            if (!_wasKilledByDisconnect)
+            if (!_wasKilledByInterrupt)
             {
                 await this.MainDownloadProcessAsync(mainProcessInfo, downloadTaskId);
             }
 
             // Reset any set flag.
-            _wasKilledByDisconnect = false;
+            _wasKilledByInterrupt = false;
         }
 
         private async Task<ProcessStartInfo> GenerateInfoProcessStartInfoAsync(Guid downloadTaskId)
@@ -162,7 +162,7 @@ namespace DockerYoutubeDL.Services
 
                 _logger.LogDebug($"Generating main ProcessStartInformation for {downloadTask.Url}");
 
-                var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadTask.Downloader, downloadTask.Id).ToString();
+                var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadTask.Id).ToString();
                 var ffmpegLocation = _config.GetValue<string>("FfmpegLocation");
                 var youtubeDlLocation = _config.GetValue<string>("YoutubeDlLocation");
                 var maxFileNameLength = _config.GetValue<int>("MaxFileNameLength");
@@ -218,7 +218,7 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task InfoDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
+        private Task InfoDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
         {
             // Playlist indices start at 1.
             var currentIndex = 1;
@@ -226,12 +226,6 @@ namespace DockerYoutubeDL.Services
 
             try
             {
-                // Mark the current owner such that the process can be killed.
-                using (var db = _factory.CreateDbContext(new string[0]))
-                {
-                    _infoDownloadProcessOwner = (await db.DownloadTask.FindAsync(downloadTaskId)).Downloader;
-                }
-
                 _infoDownloadProcess = new Process()
                 {
                     StartInfo = processInfo,
@@ -240,7 +234,7 @@ namespace DockerYoutubeDL.Services
                 _infoDownloadProcess.Exited += (s, e) =>
                 {
                     // Prevent exceptions by only allowing non killed processes to continue.
-                    if (!_wasKilledByDisconnect)
+                    if (!_wasKilledByInterrupt)
                     {
                         // Unavailable videos do not return the name of their playlist, thus not setting the 
                         // flag correctly. This ensures that all flags are set accordingly.
@@ -296,7 +290,6 @@ namespace DockerYoutubeDL.Services
                                     {
                                         DownloadResultIdentifier = result.Id,
                                         DownloadTaskIdentifier = result.DownloadTask.Id,
-                                        DownloaderIdentifier = result.DownloadTask.Downloader,
                                         Index = result.Index,
                                         HasError = result.HasError,
                                         Message = result.Message,
@@ -345,7 +338,6 @@ namespace DockerYoutubeDL.Services
                                 {
                                     DownloadResultIdentifier = result.Id,
                                     DownloadTaskIdentifier = result.DownloadTask.Id,
-                                    DownloaderIdentifier = result.DownloadTask.Downloader,
                                     Index = result.Index,
                                     VideoIdentifier = result.VideoIdentifier,
                                     Url = result.Url,
@@ -384,9 +376,10 @@ namespace DockerYoutubeDL.Services
             }
             finally
             {
-                _infoDownloadProcessOwner = new Guid();
                 _infoDownloadProcess = null;
             }
+
+            return Task.CompletedTask;
         }
 
         private async Task MainDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
@@ -399,11 +392,6 @@ namespace DockerYoutubeDL.Services
 
             try
             {
-                using (var db = _factory.CreateDbContext(new string[0]))
-                {
-                    var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                    _mainDownloadProcessOwner = downloadTask.Downloader;
-                }
                 _mainDownloadProcess = new Process()
                 {
                     StartInfo = processInfo,
@@ -413,7 +401,7 @@ namespace DockerYoutubeDL.Services
                 _mainDownloadProcess.Exited += (s, e) =>
                 {
                     // Prevent exceptions by only allowing non killed processes to continue.
-                    if (!_wasKilledByDisconnect)
+                    if (!_wasKilledByInterrupt)
                     {
                         this.MarkDownloadTaskAsDownloaded(downloadTaskId);
 
@@ -567,7 +555,6 @@ namespace DockerYoutubeDL.Services
             }
             finally
             {
-                _mainDownloadProcessOwner = new Guid();
                 _mainDownloadProcess = null;
             }
         }
@@ -579,9 +566,9 @@ namespace DockerYoutubeDL.Services
                 try
                 {
                     var downloadResult = db.DownloadResult
-                    .Include(x => x.DownloadTask)
-                    .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(videoIdentifier));
-                    var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadResult.DownloadTask.Downloader, downloadResult.DownloadTask.Id);
+                        .Include(x => x.DownloadTask)
+                        .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(videoIdentifier));
+                    var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadResult.DownloadTask.Id);
 
                     // Find the downloaded file. Only possible if no error occurred.
                     if (!downloadResult.HasError && Directory.Exists(downloadFolder))
@@ -669,45 +656,43 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        public async Task HandleDisconnectAsync(Guid userIdentifier)
+        public async Task HandleDownloadInterrupt(Guid downloadTaskId)
         {
-            // 8 should be enough since the time inbetween stacks n^n.
-            int maxRetryCount = 8;
-
-            _logger.LogDebug($"Handling the disconnect of user {userIdentifier}.");
-
-            // Set the flag indicating that the processes are killed manually.
-            _wasKilledByDisconnect = true;
-
-            _logger.LogDebug($"Killing conversion processes.");
-
-            // Kill all conversion processes (avconv, ffmpeg) that might block the deletion 
-            // of files.
-            Process.GetProcessesByName("ffmpeg").ToList().ForEach(x => x.Kill());
-            Process.GetProcessesByName("avconv").ToList().ForEach(x => x.Kill());
-
-            _logger.LogDebug($"Killing processes of user {userIdentifier}.");
-
-            // Only kill the processes if they are associated with the current user.
-            if (_infoDownloadProcessOwner == userIdentifier)
+            if(downloadTaskId == _currentDownloadTaskId)
             {
+                _logger.LogDebug($"Handling the download interrupt.");
+
+                // 8 should be enough since the time inbetween stacks n^n.
+                int maxRetryCount = 8;
+
+                // Set the flag indicating that the processes are killed manually.
+                _wasKilledByInterrupt = true;
+
+                _logger.LogDebug($"Killing conversion processes.");
+
+                // Kill all conversion processes (avconv, ffmpeg) that might block the deletion 
+                // of files.
+                Process.GetProcessesByName("ffmpeg").ToList().ForEach(x => x.Kill());
+                Process.GetProcessesByName("avconv").ToList().ForEach(x => x.Kill());
+
+                _logger.LogDebug($"Killing info and main process.");
+
                 _infoDownloadProcess.Kill();
-            }
-            if (_mainDownloadProcessOwner == userIdentifier)
-            {
                 _mainDownloadProcess.Kill();
+
+                _logger.LogDebug($"Deleting all entries (db/files) of task {_currentDownloadTaskId}.");
+
+                // Polly must be used since a disconnect interferes with all current operations.
+                await this.DeleteDbEntriesAsync(_currentDownloadTaskId, maxRetryCount);
+                await this.DeleteDownloadFilesAsync(_currentDownloadTaskId, maxRetryCount);
             }
-
-            _logger.LogDebug($"Deleting all entries (db/files) of user {userIdentifier}.");
-
-            // Polly must be used since a disconnect interferes with all current operations.
-            // The db entries must be reset first in order to prevent the main download from
-            // queuing another one of them.
-            await this.DeleteDbEntriesAsync(userIdentifier, maxRetryCount);
-            await this.DeleteDownloadFilesAsync(userIdentifier, maxRetryCount);
+            else
+            {
+                _logger.LogError($"Error while handling interrupt request. Received task id {downloadTaskId} does not match the currently active one {_currentDownloadTaskId}");
+            }
         }
 
-        private async Task DeleteDbEntriesAsync(Guid userIdentifier, int maxRetryCount)
+        private async Task DeleteDbEntriesAsync(Guid downloadTaskId, int maxRetryCount)
         {
             await Policy
                 .Handle<Exception>()
@@ -715,62 +700,61 @@ namespace DockerYoutubeDL.Services
                 {
                     if (retry == maxRetryCount)
                     {
-                        _logger.LogCritical($"Polly was not able to remove the entries of user {userIdentifier} after the maximum number of retries.");
+                        _logger.LogCritical($"Polly was not able to remove the entries of task {downloadTaskId} after the maximum number of retries.");
                     }
                     else
                     {
-                        _logger.LogError($"Error while removing the entries of user {userIdentifier}:");
+                        _logger.LogError($"Error while removing the entries of user {downloadTaskId}:");
                     }
                 }).ExecuteAsync(async () =>
                 {
                     using (var db = _factory.CreateDbContext(new string[0]))
                     {
                         // Entries of the user must be removed from the db.
-                        var toDeleteTasks = db.DownloadTask
-                            .Where(x => x.Downloader == userIdentifier);
+                        var toDeleteTask = await db.DownloadTask.FindAsync(downloadTaskId);
                         var toDeleteResults = db.DownloadResult
                             .Include(x => x.DownloadTask)
-                            .Where(x => x.DownloadTask.Downloader == userIdentifier);
-                        db.DownloadTask.RemoveRange(toDeleteTasks);
+                            .Where(x => x.DownloadTask.Id == downloadTaskId);
+                        db.DownloadTask.Remove(toDeleteTask);
                         db.DownloadResult.RemoveRange(toDeleteResults);
 
                         await db.SaveChangesAsync();
 
-                        _logger.LogDebug($"Successfully removed db entries of user {userIdentifier}");
+                        _logger.LogDebug($"Successfully removed db entries of task {downloadTaskId}");
                     }
                 });
         }
 
-        private async Task DeleteDownloadFilesAsync(Guid userIdentifier, int maxRetryCount)
+        private async Task DeleteDownloadFilesAsync(Guid downloadTaskId, int maxRetryCount)
         {
-            // Remove any folders / downloads of the user.
+            // Remove any folders / downloads of the task.
             await Policy
                 .HandleResult<bool>((deleted) => !deleted)
                 .WaitAndRetryAsync(maxRetryCount, (retry) => TimeSpan.FromSeconds(retry * retry), (result, waitTime, retry, context) =>
                 {
                     if (retry == maxRetryCount)
                     {
-                        _logger.LogCritical($"Polly was not able to remove the directory of user {userIdentifier} after the maximum number of retries.");
+                        _logger.LogCritical($"Polly was not able to remove the directory of task {downloadTaskId} after the maximum number of retries.");
                     }
                     else
                     {
-                        _logger.LogError($"Error while removing downloads of user {userIdentifier}:");
+                        _logger.LogError($"Error while removing the directory of task {downloadTaskId}:");
                     }
                 }).ExecuteAsync(() =>
                 {
-                    _logger.LogDebug($"Trying to remove downloads of user {userIdentifier}.");
+                    _logger.LogDebug($"Trying to remove the directory of task {downloadTaskId}.");
 
                     // IOExceptions are not correctly handled by Polly. Therefor the result is used.
                     try
                     {
-                        var folderPath = _pathGenerator.GenerateDownloadFolderPath(userIdentifier);
+                        var folderPath = _pathGenerator.GenerateDownloadFolderPath(downloadTaskId);
 
                         if (Directory.Exists(folderPath))
                         {
                             Directory.Delete(folderPath, true);
                         }
 
-                        _logger.LogDebug($"Successfully removed files of user {userIdentifier}");
+                        _logger.LogDebug($"Successfully removed the directory of task {downloadTaskId}");
                     }
                     catch (IOException)
                     {
