@@ -43,22 +43,18 @@ namespace DockerYoutubeDL.Pages
                 {
                     var requestedResult = await _context.DownloadResult.FindAsync(new Guid(taskResultIdentifier));
                     var path = requestedResult.PathToFile;
-                    // Crude, hacky way, but it works since the top directory of all downloads of the user 
-                    // is named after his as well as the task's guid.
-                    var isInUserDir = path.Contains(HttpContext.User.Identity.Name) && path.Contains(taskIdentifier);
+                    var fileBytes = System.IO.File.ReadAllBytes(requestedResult.PathToFile);
+                    string fileName = requestedResult.Name;
 
-                    if(isInUserDir)
+                    // Playlist indices must be added infront of files.
+                    if(requestedResult.IsPartOfPlaylist)
                     {
-                        // [0] contains the video identifier.
-                        var fileName = Path.GetFileName(requestedResult.PathToFile).Split(_pathGenerator.NameDilimiter)[1];
-                        var fileBytes = System.IO.File.ReadAllBytes(requestedResult.PathToFile);
+                        // Pad the left side of the index with as many leading zeroes as needed.
+                        var neededZeroes = (int)Math.Ceiling(Math.Log(requestedResult.Index, 10));
+                        fileName = requestedResult.Index.ToString().PadLeft(neededZeroes, '0') + "_" + fileName;
+                    }
 
-                        result = File(fileBytes, System.Net.Mime.MediaTypeNames.Application.Octet, fileName);
-                    }
-                    else
-                    {
-                        throw new Exception("Requested path is outside of the user's access.");
-                    }
+                    result = File(fileBytes, System.Net.Mime.MediaTypeNames.Application.Octet, fileName);
                 }
                 catch (Exception e)
                 {
