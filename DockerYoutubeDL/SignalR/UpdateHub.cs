@@ -47,7 +47,7 @@ namespace DockerYoutubeDL.SignalR
             var identifier = new Guid(name);
             _container.StoredClients[identifier] = Context.ConnectionId;
 
-            _logger.LogDebug($"User {name} connected.");
+            _logger.LogInformation($"User {name} connected.");
 
             return base.OnConnectedAsync();
         }
@@ -58,7 +58,7 @@ namespace DockerYoutubeDL.SignalR
             var identifier = new Guid(name);
             _container.StoredClients.Remove(identifier);
 
-            _logger.LogDebug($"User {name} disconnected.");
+            _logger.LogInformation($"User {name} disconnected.");
 
             // Enable deletion of downloads if the user's websocket connection fails.
             // Ensures that the server frees memory and does not keep allocating space.

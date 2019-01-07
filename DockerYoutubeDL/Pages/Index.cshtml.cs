@@ -73,7 +73,7 @@ namespace DockerYoutubeDL.Pages
 
                 result = new DownloadInfoModelResult(true, downloadTask.Id, downloadTask.Url);
 
-                _logger.LogDebug($"New DownloadTask added to the db: Downloader={downloadTask.Downloader}, Url={downloadTask.Url}, Id={downloadTask.Id}");
+                _logger.LogInformation($"New DownloadTask added to the db: Downloader={downloadTask.Downloader}, Url={downloadTask.Url}, Id={downloadTask.Id}");
             }
             else
             {
