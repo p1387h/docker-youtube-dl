@@ -80,7 +80,7 @@ namespace DockerYoutubeDL.Services
                     {
                         // Next task is the one that was queued earliest and was not yet downloaded. 
                         var nextTask = db.DownloadTask
-                            .Where(x => !x.WasDownloaded)
+                            .Where(x => !x.WasDownloaded && !x.WasInterrupted)
                             .Select(x => new Tuple<DownloadTask, TimeSpan>(x, now.Subtract(x.DateAdded)))
                             .OrderByDescending(x => x.Item2)
                             .FirstOrDefault()
@@ -662,9 +662,6 @@ namespace DockerYoutubeDL.Services
             {
                 _logger.LogDebug($"Handling the download interrupt.");
 
-                // 8 should be enough since the time inbetween stacks n^n.
-                int maxRetryCount = 8;
-
                 // Set the flag indicating that the processes are killed manually.
                 _wasKilledByInterrupt = true;
 
@@ -680,11 +677,12 @@ namespace DockerYoutubeDL.Services
                 _infoDownloadProcess.Kill();
                 _mainDownloadProcess.Kill();
 
-                _logger.LogDebug($"Deleting all entries (db/files) of task {_currentDownloadTaskId}.");
+                _logger.LogDebug($"Marking task as interrupted.");
 
-                // Polly must be used since a disconnect interferes with all current operations.
-                await this.DeleteDbEntriesAsync(_currentDownloadTaskId, maxRetryCount);
-                await this.DeleteDownloadFilesAsync(_currentDownloadTaskId, maxRetryCount);
+                // Only mark the entries as interrupted. Don't delete any files or remove entries 
+                // from the db.
+                await this.MarkTaskAsInterruptedAsync(downloadTaskId);
+                await _notification.NotifyClientAboutInterruptedDownloadAsync(downloadTaskId);
             }
             else
             {
@@ -692,76 +690,15 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task DeleteDbEntriesAsync(Guid downloadTaskId, int maxRetryCount)
+        private async Task MarkTaskAsInterruptedAsync(Guid downloadTaskId)
         {
-            await Policy
-                .Handle<Exception>()
-                .WaitAndRetryAsync(maxRetryCount, (retry) => TimeSpan.FromSeconds(retry * retry), (result, waitTime, retry, context) =>
-                {
-                    if (retry == maxRetryCount)
-                    {
-                        _logger.LogCritical($"Polly was not able to remove the entries of task {downloadTaskId} after the maximum number of retries.");
-                    }
-                    else
-                    {
-                        _logger.LogError($"Error while removing the entries of user {downloadTaskId}:");
-                    }
-                }).ExecuteAsync(async () =>
-                {
-                    using (var db = _factory.CreateDbContext(new string[0]))
-                    {
-                        // Entries of the user must be removed from the db.
-                        var toDeleteTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                        var toDeleteResults = db.DownloadResult
-                            .Include(x => x.DownloadTask)
-                            .Where(x => x.DownloadTask.Id == downloadTaskId);
-                        db.DownloadTask.Remove(toDeleteTask);
-                        db.DownloadResult.RemoveRange(toDeleteResults);
+            using (var db = _factory.CreateDbContext(new string[0]))
+            {
+                var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
+                downloadTask.WasInterrupted = true;
 
-                        await db.SaveChangesAsync();
-
-                        _logger.LogDebug($"Successfully removed db entries of task {downloadTaskId}");
-                    }
-                });
-        }
-
-        private async Task DeleteDownloadFilesAsync(Guid downloadTaskId, int maxRetryCount)
-        {
-            // Remove any folders / downloads of the task.
-            await Policy
-                .HandleResult<bool>((deleted) => !deleted)
-                .WaitAndRetryAsync(maxRetryCount, (retry) => TimeSpan.FromSeconds(retry * retry), (result, waitTime, retry, context) =>
-                {
-                    if (retry == maxRetryCount)
-                    {
-                        _logger.LogCritical($"Polly was not able to remove the directory of task {downloadTaskId} after the maximum number of retries.");
-                    }
-                    else
-                    {
-                        _logger.LogError($"Error while removing the directory of task {downloadTaskId}:");
-                    }
-                }).ExecuteAsync(() =>
-                {
-                    _logger.LogDebug($"Trying to remove the directory of task {downloadTaskId}.");
-
-                    // IOExceptions are not correctly handled by Polly. Therefor the result is used.
-                    try
-                    {
-                        var folderPath = _pathGenerator.GenerateDownloadFolderPath(downloadTaskId);
-
-                        if (Directory.Exists(folderPath))
-                        {
-                            Directory.Delete(folderPath, true);
-                        }
-
-                        _logger.LogDebug($"Successfully removed the directory of task {downloadTaskId}");
-                    }
-                    catch (IOException)
-                    {
-                        return Task.FromResult<bool>(false);
-                    }
-                    return Task.FromResult<bool>(true);
-                });
+                await db.SaveChangesAsync();
+            }
         }
     }
 }

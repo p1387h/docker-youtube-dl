@@ -182,6 +182,12 @@ $(document).ready(function () {
             .find("a").attr("href", "./download?taskIdentifier=" + guid + "&taskResultIdentifier=" + taskResultIdentifier);
     });
 
+    connection.on("DownloadInterrupted", (taskIdentifier) => {
+        console.log({ state: "Interrupted", task: taskIdentifier });
+
+
+    });
+
     connection.on("DownloaderError", (taskIdentifier) => {
         console.log({ state: "DownloaderError", task: taskIdentifier });
 

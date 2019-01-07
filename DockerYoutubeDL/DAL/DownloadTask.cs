@@ -15,6 +15,7 @@ namespace DockerYoutubeDL.DAL
         public AudioFormat AudioFormat { get; set; }
         public VideoFormat VideoFormat { get; set; }
         public bool WasDownloaded { get; set; }
+        public bool WasInterrupted { get; set; }
 
         public ICollection<DownloadResult> DownloadResult { get; set; }
 

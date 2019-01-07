@@ -20,6 +20,7 @@ namespace DockerYoutubeDL.SignalR
         Task DownloadProgress(Guid taskIdentifier, Guid taskResultIdentifier, double percentage);
         Task DownloadConversion(Guid taskIdentifier, Guid taskResultIdentifier);
         Task DownloadFinished(Guid taskIdentifier, Guid taskResultIdentifier);
+        Task DownloadInterrupted(Guid taskIdentifier);
         // Error in the main download process. Causes a whole download task to fail.
         Task DownloaderError(Guid taskIdentifier);
 

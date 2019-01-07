@@ -61,7 +61,7 @@ namespace DockerYoutubeDL.Services
                 },
                 new Dictionary<string, object>()
                 {
-                    { "errorMessage", $"Error while notifying users about the received information." }
+                    { "errorMessage", $"Error while notifying clients about the received download info for result with id={outputInfo.DownloadResultIdentifier}." }
                 }
             );
         }
@@ -72,13 +72,13 @@ namespace DockerYoutubeDL.Services
             await _notificationPolicy.ExecuteAsync(
                 async (context) =>
                 {
-                    _logger.LogDebug($"Notifying client about the failed download task with id={outputInfo.DownloadTaskIdentifier}.");
+                    _logger.LogDebug($"Notifying clients about the failed download task with id={outputInfo.DownloadTaskIdentifier}.");
 
                     await _hub.Clients.All.SendAsync(nameof(IUpdateClient.DownloadFailed), outputInfo);
                 },
                 new Dictionary<string, object>()
                 {
-                    { "errorMessage", $"Error while notifying users about the failed download." }
+                    { "errorMessage", $"Error while notifying clients about the failed download task with id={outputInfo.DownloadTaskIdentifier}." }
                 }
             );
         }
@@ -89,13 +89,13 @@ namespace DockerYoutubeDL.Services
             await _notificationPolicy.ExecuteAsync(
                 async (context) =>
                 {
-                    _logger.LogDebug($"Notifying client about the started download task with id={downloadTaskId}, result.id={downloadResultId}.");
+                    _logger.LogDebug($"Notifying clients about the started download task with id={downloadTaskId}, result.id={downloadResultId}.");
 
                     await _hub.Clients.All.SendAsync(nameof(IUpdateClient.DownloadStarted), downloadTaskId, downloadResultId);
                 },
                 new Dictionary<string, object>()
                 {
-                    { "errorMessage", $"Error while notifying client about the started download task with id={downloadTaskId}, result.id={downloadResultId}." }
+                    { "errorMessage", $"Error while notifying clients about the started download task with id={downloadTaskId}, result.id={downloadResultId}." }
                 }
             );
         }
@@ -106,13 +106,13 @@ namespace DockerYoutubeDL.Services
             await _notificationPolicy.ExecuteAsync(
                 async (context) =>
                 {
-                    _logger.LogDebug($"Notifying client about progress {percentage} of task={downloadTaskId}, result={downloadResultId}.");
+                    _logger.LogDebug($"Notifying clients about progress {percentage} of task={downloadTaskId}, result={downloadResultId}.");
 
                     await _hub.Clients.All.SendAsync(nameof(IUpdateClient.DownloadProgress), downloadTaskId, downloadResultId, percentage);
                 },
                 new Dictionary<string, object>()
                 {
-                    { "errorMessage", $"Error while notifying client about progress {percentage} of task={downloadTaskId}, result={downloadResultId}." }
+                    { "errorMessage", $"Error while notifying clients about progress {percentage} of task={downloadTaskId}, result={downloadResultId}." }
                 }
             );
         }
@@ -123,13 +123,13 @@ namespace DockerYoutubeDL.Services
             await _notificationPolicy.ExecuteAsync(
                 async (context) =>
                 {
-                    _logger.LogDebug($"Notifying client about conversion with id={downloadResultId}.");
+                    _logger.LogDebug($"Notifying clients about conversion with id={downloadResultId}.");
 
                     await _hub.Clients.All.SendAsync(nameof(IUpdateClient.DownloadConversion), downloadTaskId, downloadResultId);
                 },
                 new Dictionary<string, object>()
                 {
-                    { "errorMessage", $"Error while notifying client about conversion with id={downloadResultId}." }
+                    { "errorMessage", $"Error while notifying clients about conversion with id={downloadResultId}." }
                 }
             );
         }
@@ -140,13 +140,30 @@ namespace DockerYoutubeDL.Services
             await _notificationPolicy.ExecuteAsync(
                 async (context) =>
                 {
-                    _logger.LogDebug($"Notifying client about result with id={downloadResultId}.");
+                    _logger.LogDebug($"Notifying clients about result with id={downloadResultId}.");
 
                     await _hub.Clients.All.SendAsync(nameof(IUpdateClient.DownloadFinished), downloadTaskId, downloadResultId);
                 },
                 new Dictionary<string, object>()
                 {
-                    { "errorMessage", $"Error while notifying client about result with id={downloadResultId}." }
+                    { "errorMessage", $"Error while notifying clients about result with id={downloadResultId}." }
+                }
+            );
+        }
+
+        public async Task NotifyClientAboutInterruptedDownloadAsync(Guid downloadTaskId)
+        {
+            // Notify the matching client about the finished download.
+            await _notificationPolicy.ExecuteAsync(
+                async (context) =>
+                {
+                    _logger.LogDebug($"Notifying client about interrupt of task with id={downloadTaskId}.");
+
+                    await _hub.Clients.All.SendAsync(nameof(IUpdateClient.DownloadInterrupted), downloadTaskId);
+                },
+                new Dictionary<string, object>()
+                {
+                    { "errorMessage", $"Error while notifying clients about interrupt of task with id={downloadTaskId}." }
                 }
             );
         }
@@ -157,13 +174,13 @@ namespace DockerYoutubeDL.Services
             await _notificationPolicy.ExecuteAsync(
                 async (context) =>
                 {
-                    _logger.LogDebug($"Notifying user of task {downloadTaskId} about the downloader error.");
+                    _logger.LogDebug($"Notifying clients about the downloader error of task {downloadTaskId}.");
 
                     await _hub.Clients.All.SendAsync(nameof(IUpdateClient.DownloaderError), downloadTaskId);
                 },
                 new Dictionary<string, object>()
                 {
-                    { "errorMessage", $"Error while notifying user of task {downloadTaskId} about the downloader error." }
+                    { "errorMessage", $"Error while notifying clients about the downloader error of task {downloadTaskId}." }
                 }
             );
         }
