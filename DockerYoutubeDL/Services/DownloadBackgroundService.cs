@@ -119,7 +119,7 @@ namespace DockerYoutubeDL.Services
                 var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadTask.Id).ToString();
                 var ffmpegLocation = _config.GetValue<string>("FfmpegLocation");
                 var youtubeDlLocation = _config.GetValue<string>("YoutubeDlLocation");
-                var maxFileNameLength = _config.GetValue<int>("MaxFileNameLength");
+                var maxStoredFileNameLength = _config.GetValue<int>("MaxStoredFileNameLength");
 
                 var processInfo = new ProcessStartInfo(youtubeDlLocation)
                 {
@@ -136,7 +136,7 @@ namespace DockerYoutubeDL.Services
                     "--ffmpeg-location",
                     $"{ffmpegLocation}",
                     "-o",
-                    Path.Combine(downloadFolder, $"%(id)s{_pathGenerator.NameDilimiter}%(title)#0.{maxFileNameLength}s.%(ext)s").ToString(),
+                    Path.Combine(downloadFolder, $"%(id)s{_pathGenerator.NameDilimiter}%(title)#0.{maxStoredFileNameLength}s.%(ext)s").ToString(),
                 };
 
                 // Depending on the chosen settings, different types of arguments must be
@@ -343,6 +343,9 @@ namespace DockerYoutubeDL.Services
 
                 resetEvent.Set();
                 await _notification.NotifyClientsAboutDownloaderError(downloadTaskId);
+
+                // Prevent infinite loops.
+                this.MarkDownloadTaskAsDownloaded(downloadTaskId);
             }
             finally
             {

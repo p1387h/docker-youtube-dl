@@ -134,23 +134,6 @@ namespace DockerYoutubeDL.Services
             );
         }
 
-        public async Task NotifyClientsAboutFinishedDownloadTaskAsync(Guid downloadTaskId)
-        {
-            // Notify the matching client about the finished download.
-            await _notificationPolicy.ExecuteAsync(
-                async (context) =>
-                {
-                    _logger.LogDebug($"Notifying clients about finished task with id={downloadTaskId}.");
-
-                    await _hub.Clients.All.SendAsync(nameof(IUpdateClient.DownloadTaskFinished), downloadTaskId);
-                },
-                new Dictionary<string, object>()
-                {
-                    { "errorMessage", $"Error while notifying clients about finished task with id={downloadTaskId}." }
-                }
-            );
-        }
-
         public async Task NotifyClientsAboutFinishedDownloadResultAsync(Guid downloadTaskId, Guid downloadResultId)
         {
             // Notify the matching client about the finished download.
@@ -164,6 +147,23 @@ namespace DockerYoutubeDL.Services
                 new Dictionary<string, object>()
                 {
                     { "errorMessage", $"Error while notifying clients about finished result with id={downloadResultId}." }
+                }
+            );
+        }
+
+        public async Task NotifyClientsAboutFinishedDownloadTaskAsync(Guid downloadTaskId)
+        {
+            // Notify the matching client about the finished download.
+            await _notificationPolicy.ExecuteAsync(
+                async (context) =>
+                {
+                    _logger.LogDebug($"Notifying clients about finished task with id={downloadTaskId}.");
+
+                    await _hub.Clients.All.SendAsync(nameof(IUpdateClient.DownloadTaskFinished), downloadTaskId);
+                },
+                new Dictionary<string, object>()
+                {
+                    { "errorMessage", $"Error while notifying clients about finished task with id={downloadTaskId}." }
                 }
             );
         }

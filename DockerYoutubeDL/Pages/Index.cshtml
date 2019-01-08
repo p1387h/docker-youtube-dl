@@ -79,7 +79,7 @@
                                 <img src="~/images/loading.gif" class="pull-right loadingGif" />
                             </div>
                         </div>
-                        <div id="templateContainerDownloadInfoProgress" class="downloadInfo" hidden="hidden">
+                        <div id="templateContainerDownloadInfoProgress" class="downloadInfoProgress" hidden="hidden">
                             <div class="progress">
                                 <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:1%;">0%</div>
                             </div>
@@ -102,12 +102,24 @@
 
     <!-- TemplateSubEntries -->
     <ul hidden="hidden">
-        <li class="list-group-item listHeader" id="templateFileSubEntry">
-            <span>PLACEHOLDER</span>
-            <div id="templateContainerButtonDownload" hidden="hidden">
-                <a href="#" class="btn btn-primary btn-sm" style="color:white">Download</a>
+        <li class="list-group-item" id="templateFileSubEntry">
+            <div class="fileSubEntry">
+                <span>PLACEHOLDER</span>
+                <div id="templateContainerDownloadInfoText" hidden="hidden">
+                    <div class="listHeader">
+                        <div style="vertical-align:middle" class="infoTextContainer">PLACEHOLDER</div>
+                        <img src="~/images/loading.gif" class="pull-right loadingGif" />
+                    </div>
+                </div>
+                <div id="templateContainerDownloadInfoProgress" class="downloadInfoProgress" hidden="hidden">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:1%;">0%</div>
+                    </div>
+                </div>
+                <div id="templateContainerDownloadInfoButtonDownload" hidden="hidden">
+                    <a href="#" class="btn btn-primary btn-sm" style="color:white">Download</a>
+                </div>
             </div>
-            <img src="~/images/loading.gif" id="collapseOneLoading" hidden="hidden" />
         </li>
     </ul>
 </div>

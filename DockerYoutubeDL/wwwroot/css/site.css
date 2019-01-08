@@ -61,10 +61,17 @@ body {
     margin-left: 10px;
 }
 
-.downloadInfo {
+.fileSubEntry {
+    height: 2em;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.downloadInfoProgress {
     height: 1.5em;
 }
 
-.downloadInfo > .progress {
+.downloadInfoProgress > .progress {
     width: 20vw;
 }
