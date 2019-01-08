@@ -50,9 +50,77 @@
 <h2>Files</h2>
 
 <div class="panel-group" id="fileEntries" role="tablist">
-    <div id="filesTextContainer" class="text-center">
+    <div id="filesTextContainer" class="text-center" @(Model.DownloadTasks.Any() ? "hidden=hidden" : null)>
         <h4>No files available.</h4>
     </div>
+
+    @{
+        var wsWaiting = "Waiting for WS";
+
+        foreach (var task in Model.DownloadTasks)
+        {
+            <div class="panel panel-default" id="templateFileEntry">
+                <div class="panel-heading" role="tab" id="heading_@task.Id">
+                    <div class="listHeader">
+                        <h4 class="panel-title">
+                            <a role="button" data-toggle="collapse" data-parent="#heading_@task.Id" href="#body_@task.Id">
+                                <span class="glyphicon glyphicon-chevron-down"></span>
+                                @task.Url
+                            </a>
+                        </h4>
+                        <div id="containerDownloadInfo_@task.Id">
+                            <!-- Container for any information that should be displayed to the user on the right side. -->
+                            <div id="containerDownloadInfoText_@task.Id" @(task.WasDownloaded ? "hidden=hidden" : null)>
+                                <div class="listHeader">
+                                    <div style="vertical-align:middle" class="infoTextContainer">@wsWaiting</div>
+                                    <img src="~/images/loading.gif" class="pull-right loadingGif" />
+                                </div>
+                            </div>
+                            <div id="containerDownloadInfoProgress_@task.Id" class="downloadInfoProgress" hidden="hidden">
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:1%;">0%</div>
+                                </div>
+                            </div>
+                            <div id="containerDownloadInfoButtonDownload_@task.Id" @(task.WasDownloaded && task.DownloadResult.Count >= 2 ? null : "hidden=hidden")>
+                                <a href="./download?taskIdentifier=@task.Id" class="btn btn-primary btn-sm" style="color:white">Download as .zip</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="body_@task.Id" class="panel-collapse collapse in" role="tabpanel">
+                    <div class="panel-body">
+                        <ul class="list-group">
+                            <!-- TemplateFileSubEntries can be added here -->
+                            @{
+                                foreach (var result in task.DownloadResult)
+                                {
+                                    <li class="list-group-item @(result.HasError? "list-group-item-danger" : null)" id="fileSubEntry_@result.Id">
+                                        <div class="fileSubEntry">
+                                            <span>@(result.HasError ? result.Message : result.Name)</span>
+                                            <div id="containerDownloadInfoText_@result.Id" @(result.WasDownloaded? "hidden=hidden" : null)>
+                                                <div class="listHeader">
+                                                    <div style="vertical-align:middle" class="infoTextContainer">@wsWaiting</div>
+                                                    <img src="~/images/loading.gif" class="pull-right loadingGif" />
+                                                </div>
+                                            </div>
+                                            <div id="containerDownloadInfoProgress_@result.Id" class="downloadInfoProgress" hidden="hidden">
+                                                <div class="progress">
+                                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:1%;">1%</div>
+                                                </div>
+                                            </div>
+                                            <div id="containerDownloadInfoButtonDownload_@result.Id" @(result.WasDownloaded? null : "hidden=hidden")>
+                                                <a href="./download?taskIdentifier=@task.Id&taskResultIdentifier=@result.Id" class="btn btn-primary btn-sm" style="color:white">Download</a>
+                                            </div>
+                                        </div>
+                                    </li>
+                                }
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        }
+    }
 
     <!-- Templates used by JQuery for generating the list of downloadable files -->
     <div hidden="hidden">

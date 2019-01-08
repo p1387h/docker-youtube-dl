@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
 
 namespace DockerYoutubeDL.Pages
 {
@@ -17,7 +18,7 @@ namespace DockerYoutubeDL.Pages
     [IgnoreAntiforgeryToken(Order = 1001)]
     public class IndexModel : PageModel
     {
-        public string Identifier { get; set; }
+        public List<DownloadTask> DownloadTasks { get; set; }
 
         private DownloadContext _context;
         private ILogger _logger;
@@ -35,6 +36,13 @@ namespace DockerYoutubeDL.Pages
 
         public void OnGet()
         {
+            var now = DateTime.Now;
+
+            // Latest entries are the first ones in the list.
+            this.DownloadTasks = _context.DownloadTask
+                .Include(x => x.DownloadResult)
+                .OrderBy(x => now.Subtract(x.DateAdded))
+                .ToList();
         }
 
         public async Task<ActionResult> OnPost([FromBody] DownloadInfoModel downloadInfo)
