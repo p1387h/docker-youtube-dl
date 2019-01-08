@@ -6,48 +6,42 @@
 
 <div class="container" id="containerInput">
     <div class="row">
-        <form class="form-horizontal col-xs-8 col-xs-offset-2">
+        <form class="form-horizontal col-xs-12 col-xs-offset-0 col-sm-10 col-sm-offset-1">
             <div class="input-group">
                 <input type="text" class="form-control" placeholder="https://www.youtube.com/watch?v=" id="inputDownload" />
+                <div class="input-group-btn">
+                    <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" id="formatDisplay">
+                        <span class="glyphicon glyphicon-film"></span>
+                        <span id="formatName">MP4</span>
+                        <span class="caret"></span>
+                    </button>
+                    <ul class="dropdown-menu" id="formatSelection">
+                        <!-- Video -->
+                        <li class="dropdown-header"><span class="glyphicon glyphicon-film"> Video:</span></li>
+                        <li><a href="#" class="video_mp4">MP4</a></li>
+                        <li><a href="#" class="video_flv">FLV</a></li>
+                        <li><a href="#" class="video_ogg">OGG</a></li>
+                        <li><a href="#" class="video_webm">WEBM</a></li>
+                        <li><a href="#" class="video_mkv">MKV</a></li>
+                        <li><a href="#" class="video_avi">AVI</a></li>
+
+                        <!-- Audio -->
+                        <li role="separator" class="divider"></li>
+                        <li class="dropdown-header"><span class="glyphicon glyphicon-music"> Audio:</span></li>
+                        <li><a href="#" class="audio_mp3">MP3</a></li>
+                        <li><a href="#" class="audio_aac">AAC</a></li>
+                        <li><a href="#" class="audio_flac">FLAC</a></li>
+                        <li><a href="#" class="audio_opus">OPUS</a></li>
+                        <li><a href="#" class="audio_vorbis">VORBIS</a></li>
+                        <li><a href="#" class="audio_wav">WAV</a></li>
+                    </ul>
+                </div>
+
                 <span class="input-group-btn">
-                    <input type="button" name="commit" value="Download" class="btn btn-primary" id="buttonDownload">
+                    <input type="button" value="Download" class="btn btn-primary" id="buttonDownload">
                 </span>
             </div>
         </form>
-    </div>
-</div>
-
-<div class="container" id="containerFormats">
-    <div class="row">
-        <ul class="nav nav-pills nav-justified" role="tablist" id="formatSelection">
-            <!-- Video -->
-            <li role="presentation" style="text-align:center;vertical-align:middle">
-                <span class="glyphicon glyphicon-film" style="font-size:1.5em"></span>
-            </li>
-            <li role="presentation" class="active"><a href="#video" role="tab" data-toggle="tab" class="video_mp4">MP4</a></li>
-            <li role="presentation"><a href="#video" role="tab" data-toggle="tab" class="video_flv">FLV</a></li>
-            <li role="presentation"><a href="#video" role="tab" data-toggle="tab" class="video_ogg">OGG</a></li>
-            <li role="presentation"><a href="#video" role="tab" data-toggle="tab" class="video_webm">WEBM</a></li>
-            <li role="presentation"><a href="#video" role="tab" data-toggle="tab" class="video_mkv">MKV</a></li>
-            <li role="presentation"><a href="#video" role="tab" data-toggle="tab" class="video_avi">AVI</a></li>
-
-            <!-- Audio -->
-            <li role="presentation" style="text-align:center;vertical-align:middle">
-                <span class="glyphicon glyphicon-music" style="font-size:1.5em"></span>
-            </li>
-            <li role="presentation"><a href="#audio" role="tab" data-toggle="tab" class="audio_aac">AAC</a></li>
-            <li role="presentation"><a href="#audio" role="tab" data-toggle="tab" class="audio_flac">FLAC</a></li>
-            <li role="presentation"><a href="#audio" role="tab" data-toggle="tab" class="audio_mp3">MP3</a></li>
-            <li role="presentation"><a href="#audio" role="tab" data-toggle="tab" class="audio_m4a">M4A</a></li>
-            <li role="presentation"><a href="#audio" role="tab" data-toggle="tab" class="audio_opus">OPUS</a></li>
-            <li role="presentation"><a href="#audio" role="tab" data-toggle="tab" class="audio_vorbis">VORBIS</a></li>
-            <li role="presentation"><a href="#audio" role="tab" data-toggle="tab" class="audio_wav">WAV</a></li>
-        </ul>
-        <!-- Tab panes -->
-        <div class="tab-content text-center">
-            <div role="tabpanel" class="tab-pane active" id="video">Video</div>
-            <div role="tabpanel" class="tab-pane" id="audio">Audio</div>
-        </div>
     </div>
 </div>
 

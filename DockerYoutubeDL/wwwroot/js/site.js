@@ -3,18 +3,33 @@
 
 // Write your Javascript code.
 $(document).ready(function () {
+    // Initial configuration.
     let allowAjax = true;
+
+    $("#formatSelection li a").on("click", function() {
+        let selectedFormatInfo = $(this).attr("class").split("_");
+        let selectedFormatType = selectedFormatInfo[0];
+        let selectedFormat = selectedFormatInfo[1];
+        
+        // Switch the glyphicon accordingly.
+        let glyphicon = $("#formatDisplay .glyphicon");
+        if (selectedFormatType === "video" && glyphicon.hasClass("glyphicon-music")) {
+            glyphicon.removeClass("glyphicon-music").addClass("glyphicon-film");
+        } else if (selectedFormatType === "audio" && glyphicon.hasClass("glyphicon-film")) {
+            glyphicon.removeClass("glyphicon-film").addClass("glyphicon-music");
+        }
+
+        // Change the displayed text.
+        $("#formatName").text(selectedFormat.toUpperCase());
+    })
+
     $("#buttonDownload")[0].addEventListener("click", function () {
         let input = $("#inputDownload")[0];
         let url = input.value;
         let data = { url: url };
-
-        // Find the selected type as well as format and add them to the transported data.
-        let selectedFormatInfo = $("#formatSelection").find("li[class='active']").find("a").attr("class").split("_");
-        let selectedFormatType = selectedFormatInfo[0];
-        let selectedFormat = selectedFormatInfo[1];
-
-        if (selectedFormatType === "video") {
+        let selectedFormat = $("#formatName").text().toLowerCase();
+        
+        if ($("#formatDisplay .glyphicon-film").length > 0) {
             data.videoFormat = selectedFormat;
         } else {
             data.audioFormat = selectedFormat;
