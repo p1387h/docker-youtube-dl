@@ -42,9 +42,9 @@ namespace DockerYoutubeDL.Pages
                 try
                 {
                     var requestedResult = await _context.DownloadResult.FindAsync(new Guid(taskResultIdentifier));
-                    var path = requestedResult.PathToFile;
                     var fileBytes = System.IO.File.ReadAllBytes(requestedResult.PathToFile);
-                    string fileName = requestedResult.Name;
+                    var fileFormat = Path.GetExtension(requestedResult.PathToFile);
+                    var fileName = requestedResult.Name + fileFormat;
 
                     // Playlist indices must be added infront of files.
                     if(requestedResult.IsPartOfPlaylist)
