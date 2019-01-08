@@ -260,7 +260,7 @@ $(document).ready(function () {
         // Change the text on the progress bar of th esub entry.
         subEntry.children("div").first().children("div").hide();
         subEntry.find("#containerDownloadInfoProgress_" + result).show();
-        subEntry.find(".progress-bar").text("Converting... (This could take a while)");
+        subEntry.find(".progress-bar").attr("style", "width:100%").text("Converting... (This could take a while)");
     });
 
     connection.on("DownloadResultFinished", (taskIdentifier, taskResultIdentifier) => {
