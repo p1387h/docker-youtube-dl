@@ -146,11 +146,7 @@ namespace DockerYoutubeDL.Services
                     }
 
                     // Task must be marked in order for the download task to pick it up.
-                    using (var db = _factory.CreateDbContext(new string[0]))
-                    {
-                        db.DownloadTask.Find(downloadTaskId).HadInformationGathered = true;
-                        db.SaveChanges();
-                    }
+                    this.MarkDownloadTaskAsGathered(downloadTaskId);
 
                     resetEvent.Set();
                 };
@@ -275,6 +271,9 @@ namespace DockerYoutubeDL.Services
                 _logger.LogError(e, "Info download process threw an exception:");
 
                 resetEvent.Set();
+
+                // Prevent infinite loops.
+                this.MarkDownloadTaskAsGathered(downloadTaskId);
             }
             finally
             {
@@ -283,5 +282,24 @@ namespace DockerYoutubeDL.Services
 
             return Task.CompletedTask;
         }
+
+        private void MarkDownloadTaskAsGathered(Guid downloadTaskId)
+        {
+            try
+            {
+                using (var db = _factory.CreateDbContext(new string[0]))
+                {
+                    var downloadTask = db.DownloadTask.Find(downloadTaskId);
+                    downloadTask.HadInformationGathered = true;
+
+                    db.SaveChanges();
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, $"Error while marking {downloadTaskId} as gathered.");
+            }
+        }
+
     }
 }
