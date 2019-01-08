@@ -236,7 +236,7 @@ $(document).ready(function () {
         // Change the info text of the container.
         container.children("div").hide();
         container.find("#containerDownloadInfoText_" + task).show()
-            .find("div[class='infoTextContainer']").text("Running...");
+            .find("div[class='infoTextContainer']").text("Downloading...");
         // Display the progress bar in sub entry.
         subEntry.children("div").first().children("div").hide();
         subEntry.find("#containerDownloadInfoProgress_" + result).show();
@@ -255,12 +255,18 @@ $(document).ready(function () {
 
         let task = taskIdentifier;
         let result = resultIdentifier;
+        let container = $("#containerDownloadInfo_" + task);
         let subEntry = $("#body_" + task).first().find("#fileSubEntry_" + result).first();
+        let infoText = "Converting... (This could take a while)";
 
-        // Change the text on the progress bar of th esub entry.
+        // Change the info text of the container.
+        container.children("div").hide();
+        container.find("#containerDownloadInfoText_" + task).show()
+            .find("div[class='infoTextContainer']").text(infoText);
+        // Change the text on the progress bar of the sub entry.
         subEntry.children("div").first().children("div").hide();
         subEntry.find("#containerDownloadInfoProgress_" + result).show();
-        subEntry.find(".progress-bar").attr("style", "width:100%").text("Converting... (This could take a while)");
+        subEntry.find(".progress-bar").attr("style", "width:100%").text(infoText);
     });
 
     connection.on("DownloadResultFinished", (taskIdentifier, taskResultIdentifier) => {
