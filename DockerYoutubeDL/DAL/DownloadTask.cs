@@ -19,6 +19,7 @@ namespace DockerYoutubeDL.DAL
         public bool HadInformationGathered { get; set; }
         public bool WasDownloaded { get; set; }
         public bool WasInterrupted { get; set; }
+        public bool HadDownloaderError { get; set; }
 
         public ICollection<DownloadResult> DownloadResult { get; set; }
 

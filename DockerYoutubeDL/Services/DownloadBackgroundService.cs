@@ -69,7 +69,11 @@ namespace DockerYoutubeDL.Services
                 // Find the next download Target.
                 using (var db = _factory.CreateDbContext(new string[0]))
                 {
-                    Func<DownloadTask, bool> selector = new Func<DownloadTask, bool>(x => x.HadInformationGathered && !x.WasDownloaded && !x.WasInterrupted);
+                    Func<DownloadTask, bool> selector = new Func<DownloadTask, bool>(x => 
+                        x.HadInformationGathered && 
+                        !x.WasDownloaded && 
+                        !x.WasInterrupted && 
+                        !x.HadDownloaderError);
                     var now = DateTime.Now;
 
                     _logger.LogDebug("Checking for pending download task...");
@@ -352,7 +356,7 @@ namespace DockerYoutubeDL.Services
                 resetEvent.Set();
 
                 // Prevent infinite loops.
-                this.MarkDownloadTaskAsDownloaded(downloadTaskId);
+                this.MarkDownloadTaskAsDownloaderError(downloadTaskId);
 
                 await _notification.NotifyClientsAboutDownloaderError(downloadTaskId);
             }
@@ -459,6 +463,24 @@ namespace DockerYoutubeDL.Services
             catch (Exception e)
             {
                 _logger.LogError(e, $"Error while marking {downloadTaskId} as downloaded.");
+            }
+        }
+
+        private void MarkDownloadTaskAsDownloaderError(Guid downloadTaskId)
+        {
+            try
+            {
+                using (var db = _factory.CreateDbContext(new string[0]))
+                {
+                    var downloadTask = db.DownloadTask.Find(downloadTaskId);
+                    downloadTask.HadDownloaderError = true;
+
+                    db.SaveChanges();
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, $"Error while marking error on {downloadTaskId}.");
             }
         }
 

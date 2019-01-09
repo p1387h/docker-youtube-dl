@@ -67,11 +67,13 @@
     </div>
 
     @{
+        var linkQueued = "Link queued...";
         var wsWaiting = "Waiting for WS";
+        var downloaderErrror = "Download failed. See the logs for further information.";
 
         foreach (var task in Model.DownloadTasks)
         {
-            <div class="panel panel-default" id="ileEntry_@task.Id">
+            <div class="panel panel-default @(task.HadDownloaderError? "panel-danger" : null)" id="fileEntry_@task.Id">
                 <div class="panel-heading" role="tab" id="heading_@task.Id">
                     <div class="listHeader">
                         <h4 class="panel-title">
@@ -84,8 +86,20 @@
                             <!-- Container for any information that should be displayed to the user on the right side. -->
                             <div id="containerDownloadInfoText_@task.Id" @(task.WasDownloaded ? "hidden=hidden" : null)>
                                 <div class="listHeader">
-                                    <div style="vertical-align:middle" class="infoTextContainer">@(Model.RecentlyAddedTaskIdentifier == task.Id? "Link queued..." : wsWaiting)</div>
-                                    <img src="~/images/loading.gif" class="pull-right loadingGif" />
+                                    <div style="vertical-align:middle" class="infoTextContainer">
+                                        @{
+
+                                            if (task.HadDownloaderError)
+                                            {
+                                                @downloaderErrror
+                                            }
+                                            else
+                                            {
+                                                @(Model.RecentlyAddedTaskIdentifier == task.Id ? linkQueued : wsWaiting)
+                                            }
+                                        }
+                                    </div>
+                                    <img src="~/images/loading.gif" class="pull-right loadingGif" @(task.HadDownloaderError ? "hidden=hidden" : null) />
                                 </div>
                             </div>
                             <div id="containerDownloadInfoButtonDownload_@task.Id" @(task.WasDownloaded && task.DownloadResult.Count(x => !x.HasError) >= 2 ? null : "hidden=hidden")>
