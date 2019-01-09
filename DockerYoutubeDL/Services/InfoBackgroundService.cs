@@ -26,6 +26,10 @@ namespace DockerYoutubeDL.Services
         private DownloadPathGenerator _pathGenerator;
         private NotificationService _notification;
 
+        // Shared info between handlers:
+        private int _currentIndex;
+        private AutoResetEvent _resetEvent;
+
         private Guid _currentDownloadTaskId = new Guid();
         private Process _infoDownloadProcess = null;
         private bool _wasKilledByInterrupt = false;
@@ -61,9 +65,9 @@ namespace DockerYoutubeDL.Services
                 // Find the next download Target.
                 using (var db = _factory.CreateDbContext(new string[0]))
                 {
-                    Func<DownloadTask, bool> selector = new Func<DownloadTask, bool>(x => 
-                        !x.HadInformationGathered && 
-                        !x.WasInterrupted && 
+                    Func<DownloadTask, bool> selector = new Func<DownloadTask, bool>(x =>
+                        !x.HadInformationGathered &&
+                        !x.WasInterrupted &&
                         !x.HadDownloaderError);
                     var now = DateTime.Now;
 
@@ -83,8 +87,8 @@ namespace DockerYoutubeDL.Services
 
                         // Gather all necessary information.
                         _currentDownloadTaskId = nextTask.Id;
-                        var infoProcessInfo = await this.GenerateInfoProcessStartInfoAsync(nextTask.Id);
-                        await this.InfoDownloadProcessAsync(infoProcessInfo, nextTask.Id);
+                        var infoProcessInfo = await this.GenerateInfoProcessStartInfoAsync();
+                        await this.InfoDownloadProcessAsync(infoProcessInfo);
 
                         // Reset any set flag.
                         _wasKilledByInterrupt = false;
@@ -102,12 +106,12 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task<ProcessStartInfo> GenerateInfoProcessStartInfoAsync(Guid downloadTaskId)
+        private async Task<ProcessStartInfo> GenerateInfoProcessStartInfoAsync()
         {
             using (var db = _factory.CreateDbContext(new string[0]))
             {
                 var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
+                var downloadTask = await db.DownloadTask.FindAsync(_currentDownloadTaskId);
 
                 _logger.LogDebug($"Generating info ProcessStartInformation for {downloadTask.Url}");
 
@@ -126,11 +130,11 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task InfoDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
+        private async Task InfoDownloadProcessAsync(ProcessStartInfo processInfo)
         {
             // Playlist indices start at 1.
-            var currentIndex = 1;
-            var resetEvent = new AutoResetEvent(false);
+            _currentIndex = 1;
+            _resetEvent = new AutoResetEvent(false);
 
             try
             {
@@ -139,144 +143,20 @@ namespace DockerYoutubeDL.Services
                     StartInfo = processInfo,
                     EnableRaisingEvents = true
                 };
-                _infoDownloadProcess.Exited += (s, e) =>
-                {
-                    // Prevent exceptions by only allowing non killed processes to continue.
-                    if (!_wasKilledByInterrupt)
-                    {
-                        // Unavailable videos do not return the name of their playlist, thus not setting the 
-                        // flag correctly. This ensures that all flags are set accordingly.
-                        using (var db = _factory.CreateDbContext(new string[0]))
-                        {
-                            var downloadResults = db.DownloadResult
-                                .Include(x => x.DownloadTask)
-                                .Where(x => x.DownloadTask.Id == downloadTaskId)
-                                .ToList();
-                            downloadResults.ForEach(x => x.IsPartOfPlaylist = downloadResults.Count > 1);
 
-                            db.SaveChanges();
-                        }
-
-                        // Task must be marked in order for the download task to pick it up.
-                        this.MarkDownloadTaskAsGathered(downloadTaskId);
-                    }
-
-                    resetEvent.Set();
-                };
-                _infoDownloadProcess.ErrorDataReceived += (s, e) =>
-                {
-                    if (e.Data != null)
-                    {
-                        _logger.LogDebug(e.Data);
-
-                        var regexVideoProblem = new Regex(@"^ERROR:\s(?<message>.*)$");
-                        var matchVideoProblem = regexVideoProblem.Match(e.Data);
-
-                        if (matchVideoProblem.Success)
-                        {
-                            var message = matchVideoProblem.Groups["message"].Value;
-
-                            // An unavailable video must still be marked in the db (no url but can be accessed by the index).
-                            using (var db = _factory.CreateDbContext(new string[0]))
-                            {
-                                try
-                                {
-                                    // An error means a video is unavailable and can not be downloaded.
-                                    var result = new DownloadResult()
-                                    {
-                                        DownloadTask = db.DownloadTask.Find(downloadTaskId),
-                                        Index = currentIndex,
-                                        HasError = true,
-                                        Message = message
-                                    };
-
-                                    db.DownloadResult.Add(result);
-                                    db.DownloadTask.Find(downloadTaskId).DownloadResult.Add(result);
-                                    db.SaveChanges();
-
-                                    _logger.LogDebug($"Error Info received and added to db: Index={result.Index}, Message={result.Message}");
-
-                                    // Notify the client about the error. Only do this AFTER the db saved the id of the result!
-                                    var outputInfo = new YoutubeDlOutputInfo()
-                                    {
-                                        DownloadResultIdentifier = result.Id,
-                                        DownloadTaskIdentifier = result.DownloadTask.Id,
-                                        Index = result.Index,
-                                        HasError = result.HasError,
-                                        Message = result.Message,
-                                    };
-                                    Task.Run(async () => await _notification.NotifyClientsAboutFailedDownloadAsync(outputInfo));
-                                }
-                                catch (Exception exception)
-                                {
-                                    _logger.LogError(exception, "Error while adding parsed info process stdErr information to database.");
-                                }
-                            }
-
-                            // Index must be incremented for unavailable videos as well!
-                            currentIndex++;
-                        }
-                    }
-                };
-                _infoDownloadProcess.OutputDataReceived += (s, e) =>
-                {
-                    if (e.Data != null)
-                    {
-                        var template = JsonConvert.DeserializeObject<YoutubeDlOutputTemplate>(e.Data);
-
-                        using (var db = _factory.CreateDbContext(new string[0]))
-                        {
-                            try
-                            {
-                                // An error means a video is unavailable and can not be downloaded.
-                                var result = new DownloadResult()
-                                {
-                                    DownloadTask = db.DownloadTask.Find(downloadTaskId),
-                                    Url = template.webpage_url,
-                                    Name = template.title,
-                                    VideoIdentifier = template.id,
-                                    Index = currentIndex,
-                                    HasError = false,
-                                    IsPartOfPlaylist = !string.IsNullOrEmpty(template.playlist)
-                                };
-
-                                db.DownloadResult.Add(result);
-                                db.DownloadTask.Find(downloadTaskId).DownloadResult.Add(db.DownloadResult.Find(result.Id));
-                                db.SaveChanges();
-
-                                // Notify the client about the info. Only do this AFTER the db saved the index of the result!
-                                var outputInfo = new YoutubeDlOutputInfo()
-                                {
-                                    DownloadResultIdentifier = result.Id,
-                                    DownloadTaskIdentifier = result.DownloadTask.Id,
-                                    Index = result.Index,
-                                    VideoIdentifier = result.VideoIdentifier,
-                                    Url = result.Url,
-                                    Name = result.Name,
-                                    IsPartOfPlaylist = result.IsPartOfPlaylist
-                                };
-                                Task.Run(async () => { await _notification.NotifyClientsAboutReceivedDownloadInformationAsync(outputInfo); });
-                            }
-                            catch (Exception exception)
-                            {
-                                _logger.LogError(exception, "Error while adding parsed info process stdOut information to database.");
-                            }
-                        }
-
-                        // Increment index for further entries.
-                        currentIndex++;
-                    }
-                };
+                _infoDownloadProcess.Exited += this.HandleExited;
+                _infoDownloadProcess.ErrorDataReceived += this.HandleError;
+                _infoDownloadProcess.OutputDataReceived += this.HandleOutput;
 
                 _infoDownloadProcess.Start();
 
-                // Enables the asynchronus callback function to receive the redirected data.
+                // Enables the asynchronus callback functions to receive the redirected data.
                 _infoDownloadProcess.BeginOutputReadLine();
                 _infoDownloadProcess.BeginErrorReadLine();
 
                 // Wait for the process to finish.
                 _logger.LogDebug("Waiting for the info download process to finish...");
-                resetEvent.WaitOne();
+                _resetEvent.WaitOne();
 
                 // Diable the asynchronus callback functions.
                 _infoDownloadProcess.CancelOutputRead();
@@ -288,19 +168,155 @@ namespace DockerYoutubeDL.Services
             {
                 _logger.LogError(e, "Info download process threw an exception:");
 
-                resetEvent.Set();
+                _resetEvent.Set();
 
                 // Prevent infinite loops.
-                this.MarkDownloadTaskAsDownloaderError(downloadTaskId);
+                this.MarkDownloadTaskAsDownloaderError(_currentDownloadTaskId);
 
-                await _notification.NotifyClientsAboutDownloaderError(downloadTaskId);
+                await _notification.NotifyClientsAboutDownloaderError(_currentDownloadTaskId);
             }
             finally
             {
                 // Prevents null pointer exceptions when killing the process.
                 _currentDownloadTaskId = new Guid();
+
+                // Remove all handlers etc. to prevent memory leaks.
+                _infoDownloadProcess.Exited -= this.HandleExited;
+                _infoDownloadProcess.ErrorDataReceived -= this.HandleError;
+                _infoDownloadProcess.OutputDataReceived -= this.HandleOutput;
                 _infoDownloadProcess.Dispose();
                 _infoDownloadProcess = null;
+            }
+        }
+
+        private void HandleExited(object sender, EventArgs e)
+        {
+            // Prevent exceptions by only allowing non killed processes to continue.
+            if (!_wasKilledByInterrupt)
+            {
+                // Unavailable videos do not return the name of their playlist, thus not setting the 
+                // flag correctly. This ensures that all flags are set accordingly.
+                using (var db = _factory.CreateDbContext(new string[0]))
+                {
+                    var downloadResults = db.DownloadResult
+                        .Include(x => x.DownloadTask)
+                        .Where(x => x.DownloadTask.Id == _currentDownloadTaskId)
+                        .ToList();
+                    downloadResults.ForEach(x => x.IsPartOfPlaylist = downloadResults.Count > 1);
+
+                    db.SaveChanges();
+                }
+
+                // Task must be marked in order for the download task to pick it up.
+                this.MarkDownloadTaskAsGathered(_currentDownloadTaskId);
+            }
+
+            _resetEvent.Set();
+        }
+
+        private void HandleError(object sender, DataReceivedEventArgs e)
+        {
+            if (e.Data != null)
+            {
+                _logger.LogDebug(e.Data);
+
+                var regexVideoProblem = new Regex(@"^ERROR:\s(?<message>.*)$");
+                var matchVideoProblem = regexVideoProblem.Match(e.Data);
+
+                if (matchVideoProblem.Success)
+                {
+                    var message = matchVideoProblem.Groups["message"].Value;
+
+                    // An unavailable video must still be marked in the db (no url but can be accessed by the index).
+                    using (var db = _factory.CreateDbContext(new string[0]))
+                    {
+                        try
+                        {
+                            // An error means a video is unavailable and can not be downloaded.
+                            var result = new DownloadResult()
+                            {
+                                DownloadTask = db.DownloadTask.Find(_currentDownloadTaskId),
+                                Index = _currentIndex,
+                                HasError = true,
+                                Message = message
+                            };
+
+                            db.DownloadResult.Add(result);
+                            db.DownloadTask.Find(_currentDownloadTaskId).DownloadResult.Add(result);
+                            db.SaveChanges();
+
+                            _logger.LogDebug($"Error Info received and added to db: Index={result.Index}, Message={result.Message}");
+
+                            // Notify the client about the error. Only do this AFTER the db saved the id of the result!
+                            var outputInfo = new YoutubeDlOutputInfo()
+                            {
+                                DownloadResultIdentifier = result.Id,
+                                DownloadTaskIdentifier = result.DownloadTask.Id,
+                                Index = result.Index,
+                                HasError = result.HasError,
+                                Message = result.Message,
+                            };
+                            Task.Run(async () => await _notification.NotifyClientsAboutFailedDownloadAsync(outputInfo));
+                        }
+                        catch (Exception exception)
+                        {
+                            _logger.LogError(exception, "Error while adding parsed info process stdErr information to database.");
+                        }
+                    }
+
+                    // Index must be incremented for unavailable videos as well!
+                    _currentIndex++;
+                }
+            }
+        }
+
+        private void HandleOutput(object sender, DataReceivedEventArgs e)
+        {
+            if (e.Data != null)
+            {
+                var template = JsonConvert.DeserializeObject<YoutubeDlOutputTemplate>(e.Data);
+
+                using (var db = _factory.CreateDbContext(new string[0]))
+                {
+                    try
+                    {
+                        // An error means a video is unavailable and can not be downloaded.
+                        var result = new DownloadResult()
+                        {
+                            DownloadTask = db.DownloadTask.Find(_currentDownloadTaskId),
+                            Url = template.webpage_url,
+                            Name = template.title,
+                            VideoIdentifier = template.id,
+                            Index = _currentIndex,
+                            HasError = false,
+                            IsPartOfPlaylist = !string.IsNullOrEmpty(template.playlist)
+                        };
+
+                        db.DownloadResult.Add(result);
+                        db.DownloadTask.Find(_currentDownloadTaskId).DownloadResult.Add(db.DownloadResult.Find(result.Id));
+                        db.SaveChanges();
+
+                        // Notify the client about the info. Only do this AFTER the db saved the index of the result!
+                        var outputInfo = new YoutubeDlOutputInfo()
+                        {
+                            DownloadResultIdentifier = result.Id,
+                            DownloadTaskIdentifier = result.DownloadTask.Id,
+                            Index = result.Index,
+                            VideoIdentifier = result.VideoIdentifier,
+                            Url = result.Url,
+                            Name = result.Name,
+                            IsPartOfPlaylist = result.IsPartOfPlaylist
+                        };
+                        Task.Run(async () => { await _notification.NotifyClientsAboutReceivedDownloadInformationAsync(outputInfo); });
+                    }
+                    catch (Exception exception)
+                    {
+                        _logger.LogError(exception, "Error while adding parsed info process stdOut information to database.");
+                    }
+                }
+
+                // Increment index for further entries.
+                _currentIndex++;
             }
         }
 

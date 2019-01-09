@@ -34,6 +34,12 @@ namespace DockerYoutubeDL.Services
         // Percentages are 0-100.
         private double _percentageMinDifference = 10;
 
+        // Shared info between handlers:
+        private int _currentIndex;
+        private AutoResetEvent _resetEvent;
+        private string _currentDownloadVideoIdentifier;
+        private double _prevPercentage;
+
         private Guid _currentDownloadTaskId = new Guid();
         private Process _mainDownloadProcess = null;
         private bool _wasKilledByInterrupt = false;
@@ -92,8 +98,8 @@ namespace DockerYoutubeDL.Services
 
                         // Gather all necessary information.
                         _currentDownloadTaskId = nextTask.Id;
-                        var mainProcessInfo = await this.GenerateMainProcessStartInfoAsync(nextTask.Id);
-                        await this.MainDownloadProcessAsync(mainProcessInfo, nextTask.Id);
+                        var mainProcessInfo = await this.GenerateMainProcessStartInfoAsync();
+                        await this.MainDownloadProcessAsync(mainProcessInfo);
 
                         // Reset any set flag.
                         _wasKilledByInterrupt = false;
@@ -111,12 +117,12 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task<ProcessStartInfo> GenerateMainProcessStartInfoAsync(Guid downloadTaskId)
+        private async Task<ProcessStartInfo> GenerateMainProcessStartInfoAsync()
         {
             using (var db = _factory.CreateDbContext(new string[0]))
             {
                 var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
+                var downloadTask = await db.DownloadTask.FindAsync(_currentDownloadTaskId);
 
                 _logger.LogDebug($"Generating main ProcessStartInformation for {downloadTask.Url}");
 
@@ -178,13 +184,13 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private async Task MainDownloadProcessAsync(ProcessStartInfo processInfo, Guid downloadTaskId)
+        private async Task MainDownloadProcessAsync(ProcessStartInfo processInfo)
         {
             // Playlist indices start at 1.
-            var currentIndex = 1;
-            var resetEvent = new AutoResetEvent(false);
-            string currentDownloadVideoIdentifier = null;
-            var prevPercentage = 0.0;
+            _currentIndex = 1;
+            _resetEvent = new AutoResetEvent(false);
+            _currentDownloadVideoIdentifier = null;
+            _prevPercentage = 0.0;
 
             try
             {
@@ -194,144 +200,9 @@ namespace DockerYoutubeDL.Services
                     EnableRaisingEvents = true
                 };
 
-                _mainDownloadProcess.Exited += (s, e) =>
-                {
-                    // Prevent exceptions by only allowing non killed processes to continue.
-                    if (!_wasKilledByInterrupt)
-                    {
-                        this.MarkDownloadTaskAsDownloaded(downloadTaskId);
-                        Task.Run(async () => await _notification.NotifyClientsAboutFinishedDownloadTaskAsync(downloadTaskId));
-
-                        // The last download of a playlist does not trigger the notification of the output
-                        // (Same goes for a simple download).
-                        this.SavePathForDownloadResult(downloadTaskId, currentDownloadVideoIdentifier);
-                        this.SendDownloadResultFinishedNotification(downloadTaskId, currentDownloadVideoIdentifier);
-                        this.MarkPossibleDownloadResultAsDownloaded(downloadTaskId, currentDownloadVideoIdentifier);
-                    }
-
-                    resetEvent.Set();
-                };
-                // Only log the error, since this output includes the error and warning messages of 
-                // youtube-dl which are handled in the info gathering process. Therefor sending a
-                // downloader error to the user is not advised.
-                _mainDownloadProcess.ErrorDataReceived += (s, e) =>
-                {
-                    if (e.Data != null)
-                    {
-                        _logger.LogError("Main download process threw Error: " + e.Data);
-                    }
-                };
-                _mainDownloadProcess.OutputDataReceived += (s, e) =>
-                {
-                    if (e.Data != null)
-                    {
-                        _logger.LogDebug(e.Data);
-
-                        var regexVideoDownloadPlaylist = new Regex(@"^\[download\] Downloading video (?<currentIndex>[0-9]+) of [0-9]+$");
-                        var regexVideoWebPage = new Regex(@"^\[youtube\] (?<videoIdentifier>.+): Downloading webpage$");
-                        var regexVideoDownloadProgress = new Regex(@"^\[download\]\s\s?(?<percentage>[0-9]+\.[0-9]+)%.*$");
-                        var regexVideoConversion = new Regex(@"^\[ffmpeg\]\s.*Destination:.*$");
-                        var matchVideoDownloadPlaylist = regexVideoDownloadPlaylist.Match(e.Data);
-                        var matchVideoWebPage = regexVideoWebPage.Match(e.Data);
-                        var matchVideoDownloadProgress = regexVideoDownloadProgress.Match(e.Data);
-                        var matchVideoConversion = regexVideoConversion.Match(e.Data);
-
-                        if (matchVideoDownloadPlaylist.Success)
-                        {
-                            var prevIndex = currentIndex;
-                            currentIndex = Int32.Parse(matchVideoDownloadPlaylist.Groups["currentIndex"].Value);
-
-                            // The next index always indicates that the previous entry was downloaded.
-                            if (currentIndex - 1 > 0)
-                            {
-                                this.SavePathForDownloadResult(downloadTaskId, currentDownloadVideoIdentifier);
-                                this.SendDownloadResultFinishedNotification(downloadTaskId, currentDownloadVideoIdentifier);
-                                this.MarkPossibleDownloadResultAsDownloaded(downloadTaskId, currentDownloadVideoIdentifier);
-                            }
-                        }
-                        else if (matchVideoWebPage.Success)
-                        {
-                            currentDownloadVideoIdentifier = matchVideoWebPage.Groups["videoIdentifier"].Value;
-
-                            // --dump-json in the info process is unable to extract the video identifier for a 
-                            // unavailable video. Therefor this must be inserted here.
-                            // NOTE:
-                            // The identifier stays null UNTIL the download action for the result itself if performed!
-                            using (var db = _factory.CreateDbContext(new string[0]))
-                            {
-                                try
-                                {
-                                    // Index must be used since a failed result does NOT yet contain the video identifier!
-                                    var result = db.DownloadResult
-                                        .Include(x => x.DownloadTask)
-                                        .Single(x => x.DownloadTask.Id == downloadTaskId && x.Index == currentIndex);
-
-                                    if (string.IsNullOrEmpty(result.VideoIdentifier))
-                                    {
-                                        result.VideoIdentifier = currentDownloadVideoIdentifier;
-                                    }
-
-                                    // Skip notifications for unavailable videos.
-                                    if (!result.HasError)
-                                    {
-                                        Task.Run(async () => await _notification.NotifyClientsAboutStartedDownloadAsync(downloadTaskId, result.Id));
-                                    }
-
-                                    db.SaveChanges();
-                                }
-                                catch (Exception exception)
-                                {
-                                    _logger.LogError(exception, "Error while changing the video identifier based on main process stdOut information.");
-                                }
-                            }
-                        }
-                        else if (matchVideoDownloadProgress.Success)
-                        {
-                            var percentage = matchVideoDownloadProgress.Groups["percentage"].Value;
-                            var percentageDouble = Double.Parse(percentage.Replace(',', '.'), CultureInfo.InvariantCulture);
-
-                            // Do not flood the client with messages.
-                            if (percentageDouble - prevPercentage >= _percentageMinDifference)
-                            {
-                                prevPercentage = percentageDouble;
-
-                                using (var db = _factory.CreateDbContext(new string[0]))
-                                {
-                                    try
-                                    {
-                                        var result = db.DownloadResult
-                                            .Include(x => x.DownloadTask)
-                                            .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(currentDownloadVideoIdentifier));
-
-                                        Task.Run(async () => await _notification.NotifyClientsAboutDownloadProgressAsync(downloadTaskId, result.Id, percentageDouble));
-                                    }
-                                    catch (Exception exception)
-                                    {
-                                        _logger.LogError(exception, "Error while performing progress notifications based on main process stdOut information.");
-                                    }
-                                }
-                            }
-                        }
-                        else if (matchVideoConversion.Success)
-                        {
-                            using (var db = _factory.CreateDbContext(new string[0]))
-                            {
-                                try
-                                {
-                                    var result = db.DownloadResult
-                                        .Include(x => x.DownloadTask)
-                                        .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(currentDownloadVideoIdentifier));
-
-                                    Task.Run(async () => await _notification.NotifyClientsAboutDownloadConversionAsync(downloadTaskId, result.Id));
-                                }
-                                catch (Exception exception)
-                                {
-                                    _logger.LogError(exception, "Error while performing conversion notifications based on main process stdOut information.");
-                                }
-                            }
-                        }
-                    }
-                };
+                _mainDownloadProcess.Exited += this.HandleExited;
+                _mainDownloadProcess.ErrorDataReceived += this.HandleError;
+                _mainDownloadProcess.OutputDataReceived += this.HandleOutput;
 
                 _mainDownloadProcess.Start();
 
@@ -341,7 +212,7 @@ namespace DockerYoutubeDL.Services
 
                 // Wait for the process to finish.
                 _logger.LogDebug("Waiting for the main download process to finish...");
-                resetEvent.WaitOne();
+                _resetEvent.WaitOne();
 
                 // Diable the asynchronus callback functions.
                 _mainDownloadProcess.CancelOutputRead();
@@ -353,21 +224,174 @@ namespace DockerYoutubeDL.Services
             {
                 _logger.LogError(e, "Main download process threw an exception:");
 
-                resetEvent.Set();
+                _resetEvent.Set();
 
                 // Prevent infinite loops.
-                this.MarkDownloadTaskAsDownloaderError(downloadTaskId);
+                this.MarkDownloadTaskAsDownloaderError(_currentDownloadTaskId);
 
-                await _notification.NotifyClientsAboutDownloaderError(downloadTaskId);
+                await _notification.NotifyClientsAboutDownloaderError(_currentDownloadTaskId);
             }
             finally
             {
                 // Prevents null pointer exceptions when killing the process.
                 _currentDownloadTaskId = new Guid();
+
+                // Remove all handlers etc. to prevent memory leaks.
+                _mainDownloadProcess.Exited -= this.HandleExited;
+                _mainDownloadProcess.ErrorDataReceived -= this.HandleError;
+                _mainDownloadProcess.OutputDataReceived -= this.HandleOutput;
                 _mainDownloadProcess.Dispose();
                 _mainDownloadProcess = null;
             }
         }
+
+        private void HandleExited(object sender, EventArgs e)
+        {
+            // Prevent exceptions by only allowing non killed processes to continue.
+            if (!_wasKilledByInterrupt)
+            {
+                this.MarkDownloadTaskAsDownloaded(_currentDownloadTaskId);
+                Task.Run(async () => await _notification.NotifyClientsAboutFinishedDownloadTaskAsync(_currentDownloadTaskId));
+
+                // The last download of a playlist does not trigger the notification of the output
+                // (Same goes for a simple download).
+                this.SavePathForDownloadResult(_currentDownloadTaskId, _currentDownloadVideoIdentifier);
+                this.SendDownloadResultFinishedNotification(_currentDownloadTaskId, _currentDownloadVideoIdentifier);
+                this.MarkPossibleDownloadResultAsDownloaded(_currentDownloadTaskId, _currentDownloadVideoIdentifier);
+            }
+
+            _resetEvent.Set();
+        }
+
+        private void HandleError(object sender, DataReceivedEventArgs e)
+        {
+            // Only log the error, since this output includes the error and warning messages of 
+            // youtube-dl which are handled in the info gathering process. Therefor sending a
+            // downloader error to the user is not advised.
+            if (e.Data != null)
+            {
+                _logger.LogError("Main download process threw Error: " + e.Data);
+            }
+        }
+
+        private void HandleOutput(object sender, DataReceivedEventArgs e)
+        {
+            if (e.Data != null)
+            {
+                _logger.LogDebug(e.Data);
+
+                var regexVideoDownloadPlaylist = new Regex(@"^\[download\] Downloading video (?<currentIndex>[0-9]+) of [0-9]+$");
+                var regexVideoWebPage = new Regex(@"^\[youtube\] (?<videoIdentifier>.+): Downloading webpage$");
+                var regexVideoDownloadProgress = new Regex(@"^\[download\]\s\s?(?<percentage>[0-9]+\.[0-9]+)%.*$");
+                var regexVideoConversion = new Regex(@"^\[ffmpeg\]\s.*Destination:.*$");
+                var matchVideoDownloadPlaylist = regexVideoDownloadPlaylist.Match(e.Data);
+                var matchVideoWebPage = regexVideoWebPage.Match(e.Data);
+                var matchVideoDownloadProgress = regexVideoDownloadProgress.Match(e.Data);
+                var matchVideoConversion = regexVideoConversion.Match(e.Data);
+
+                if (matchVideoDownloadPlaylist.Success)
+                {
+                    var prevIndex = _currentIndex;
+                    _currentIndex = Int32.Parse(matchVideoDownloadPlaylist.Groups["currentIndex"].Value);
+
+                    // The next index always indicates that the previous entry was downloaded.
+                    if (_currentIndex - 1 > 0)
+                    {
+                        this.SavePathForDownloadResult(_currentDownloadTaskId, _currentDownloadVideoIdentifier);
+                        this.SendDownloadResultFinishedNotification(_currentDownloadTaskId, _currentDownloadVideoIdentifier);
+                        this.MarkPossibleDownloadResultAsDownloaded(_currentDownloadTaskId, _currentDownloadVideoIdentifier);
+                    }
+                }
+                else if (matchVideoWebPage.Success)
+                {
+                    _currentDownloadVideoIdentifier = matchVideoWebPage.Groups["videoIdentifier"].Value;
+
+                    // --dump-json in the info process is unable to extract the video identifier for a 
+                    // unavailable video. Therefor this must be inserted here.
+                    // NOTE:
+                    // The identifier stays null UNTIL the download action for the result itself if performed!
+                    using (var db = _factory.CreateDbContext(new string[0]))
+                    {
+                        try
+                        {
+                            // Index must be used since a failed result does NOT yet contain the video identifier!
+                            var result = db.DownloadResult
+                                .Include(x => x.DownloadTask)
+                                .Single(x => x.DownloadTask.Id == _currentDownloadTaskId && x.Index == _currentIndex);
+
+                            if (string.IsNullOrEmpty(result.VideoIdentifier))
+                            {
+                                result.VideoIdentifier = _currentDownloadVideoIdentifier;
+                            }
+
+                            // Skip notifications for unavailable videos.
+                            if (!result.HasError)
+                            {
+                                Task.Run(async () => await _notification.NotifyClientsAboutStartedDownloadAsync(_currentDownloadTaskId, result.Id));
+                            }
+
+                            db.SaveChanges();
+                        }
+                        catch (Exception exception)
+                        {
+                            _logger.LogError(exception, "Error while changing the video identifier based on main process stdOut information.");
+                        }
+                    }
+                }
+                else if (matchVideoDownloadProgress.Success)
+                {
+                    var percentage = matchVideoDownloadProgress.Groups["percentage"].Value;
+                    var percentageDouble = Double.Parse(percentage.Replace(',', '.'), CultureInfo.InvariantCulture);
+
+                    // Do not flood the client with messages.
+                    if (percentageDouble - _prevPercentage >= _percentageMinDifference)
+                    {
+                        _prevPercentage = percentageDouble;
+
+                        using (var db = _factory.CreateDbContext(new string[0]))
+                        {
+                            try
+                            {
+                                var result = db.DownloadResult
+                                    .Include(x => x.DownloadTask)
+                                    .Single(x => 
+                                        x.DownloadTask.Id == _currentDownloadTaskId && 
+                                        x.VideoIdentifier != null && 
+                                        x.VideoIdentifier.Equals(_currentDownloadVideoIdentifier));
+
+                                Task.Run(async () => await _notification.NotifyClientsAboutDownloadProgressAsync(_currentDownloadTaskId, result.Id, percentageDouble));
+                            }
+                            catch (Exception exception)
+                            {
+                                _logger.LogError(exception, "Error while performing progress notifications based on main process stdOut information.");
+                            }
+                        }
+                    }
+                }
+                else if (matchVideoConversion.Success)
+                {
+                    using (var db = _factory.CreateDbContext(new string[0]))
+                    {
+                        try
+                        {
+                            var result = db.DownloadResult
+                                .Include(x => x.DownloadTask)
+                                .Single(x => 
+                                    x.DownloadTask.Id == _currentDownloadTaskId && 
+                                    x.VideoIdentifier != null && 
+                                    x.VideoIdentifier.Equals(_currentDownloadVideoIdentifier));
+
+                            Task.Run(async () => await _notification.NotifyClientsAboutDownloadConversionAsync(_currentDownloadTaskId, result.Id));
+                        }
+                        catch (Exception exception)
+                        {
+                            _logger.LogError(exception, "Error while performing conversion notifications based on main process stdOut information.");
+                        }
+                    }
+                }
+            }
+        }
+
 
         private void SavePathForDownloadResult(Guid downloadTaskId, string videoIdentifier)
         {
