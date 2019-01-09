@@ -86,7 +86,7 @@ namespace DockerYoutubeDL.Services
 
                         _logger.LogDebug($"Next download: Url={nextTask.Url}, Id={nextTask.Id}");
 
-                        // Gather all necessary information
+                        // Gather all necessary information.
                         _currentDownloadTaskId = nextTask.Id;
                         var mainProcessInfo = await this.GenerateMainProcessStartInfoAsync(nextTask.Id);
                         await this.MainDownloadProcessAsync(mainProcessInfo, nextTask.Id);
@@ -330,13 +330,19 @@ namespace DockerYoutubeDL.Services
                 };
 
                 _mainDownloadProcess.Start();
-                // Enables the asynchronus callback function to receive the redirected data.
+
+                // Enables the asynchronus callback functions to receive the redirected data.
                 _mainDownloadProcess.BeginOutputReadLine();
                 _mainDownloadProcess.BeginErrorReadLine();
 
                 // Wait for the process to finish.
                 _logger.LogDebug("Waiting for the main download process to finish...");
                 resetEvent.WaitOne();
+
+                // Diable the asynchronus callback functions.
+                _mainDownloadProcess.CancelOutputRead();
+                _mainDownloadProcess.CancelErrorRead();
+
                 _logger.LogDebug($"Finished downloading files.");
             }
             catch (Exception e)
@@ -344,13 +350,17 @@ namespace DockerYoutubeDL.Services
                 _logger.LogError(e, "Main download process threw an exception:");
 
                 resetEvent.Set();
-                await _notification.NotifyClientsAboutDownloaderError(downloadTaskId);
 
                 // Prevent infinite loops.
                 this.MarkDownloadTaskAsDownloaded(downloadTaskId);
+
+                await _notification.NotifyClientsAboutDownloaderError(downloadTaskId);
             }
             finally
             {
+                // Prevents null pointer exceptions when killing the process.
+                _currentDownloadTaskId = new Guid();
+                _mainDownloadProcess.Dispose();
                 _mainDownloadProcess = null;
             }
         }
@@ -452,11 +462,11 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        public async Task HandleDownloadInterrupt(Guid downloadTaskId)
+        public Task HandleDownloadInterrupt(Guid downloadTaskId)
         {
             if(downloadTaskId == _currentDownloadTaskId)
             {
-                // Set the flag indicating that the processes are killed manually.
+                // Set the flag indicating that the process was killed manually.
                 _wasKilledByInterrupt = true;
 
                 _logger.LogDebug($"Killing conversion processes.");
@@ -469,29 +479,13 @@ namespace DockerYoutubeDL.Services
                 _logger.LogDebug($"Killing main process.");
 
                 _mainDownloadProcess.Kill();
-
-                _logger.LogDebug($"Marking task as interrupted.");
-
-                // Only mark the entries as interrupted. Don't delete any files or remove entries 
-                // from the db.
-                await this.MarkTaskAsInterruptedAsync(downloadTaskId);
-                await _notification.NotifyClientsAboutInterruptedDownloadAsync(downloadTaskId);
             }
             else
             {
                 _logger.LogError($"Error while handling interrupt request. Received task id {downloadTaskId} does not match the currently active one {_currentDownloadTaskId}");
             }
-        }
 
-        private async Task MarkTaskAsInterruptedAsync(Guid downloadTaskId)
-        {
-            using (var db = _factory.CreateDbContext(new string[0]))
-            {
-                var downloadTask = await db.DownloadTask.FindAsync(downloadTaskId);
-                downloadTask.WasInterrupted = true;
-
-                await db.SaveChangesAsync();
-            }
+            return Task.CompletedTask;
         }
     }
 }

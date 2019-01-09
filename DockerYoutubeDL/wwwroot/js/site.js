@@ -3,14 +3,12 @@
 
 // Write your Javascript code.
 $(document).ready(function () {
-    // Initial configuration.
-    let allowAjax = true;
-
-    $("#formatSelection li a").on("click", function() {
+    // Format selection must change the different fields of the form.
+    $("#formatSelection li a").on("click", function () {
         let selectedFormatInfo = $(this).attr("class").split("_");
         let selectedFormatType = selectedFormatInfo[0];
         let selectedFormat = selectedFormatInfo[1];
-        
+
         // Switch the glyphicon accordingly.
         let glyphicon = $("#formatDisplay .glyphicon");
         if (selectedFormatType === "video" && glyphicon.hasClass("glyphicon-music")) {
@@ -21,93 +19,23 @@ $(document).ready(function () {
 
         // Change the displayed text.
         $("#formatName").text(selectedFormat.toUpperCase());
-    })
 
-    $("#buttonDownload")[0].addEventListener("click", function () {
-        let input = $("#inputDownload")[0];
-        let url = input.value;
-        let data = { url: url };
-        let selectedFormat = $("#formatName").text().toLowerCase();
-        
+        // Change the hidden fields.
         if ($("#formatDisplay .glyphicon-film").length > 0) {
-            data.videoFormat = selectedFormat;
+            $("[name='VideoFormat']")[0].value = $("#formatName").text().toLowerCase();
+            $("[name='AudioFormat']")[0].value = "none";
         } else {
-            data.audioFormat = selectedFormat;
-        }
-
-        input.value = "";
-
-        // Ajax for sending the information to the server.
-        if (allowAjax === true) {
-            fetch(".", {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
-            })
-                .then(function (response) {
-                    return response.json();
-                })
-                .then(function (value) {
-                    if (value.success === true) {
-                        console.log(value);
-
-                        $("#filesTextContainer").hide();
-                        addListHeader(value.taskIdentifier, value.url);
-                    }
-                    else {
-                        console.log(value);
-                    }
-                })
-                .catch(function (error) {
-                    console.log(error);
-                });
-        }
-
-        let glyphiconMinus = function () {
-            return $.parseHTML("<span class=\"glyphicon glyphicon-minus\"></span>");
-        }
-
-        let addListHeader = function (taskIdentifier, url) {
-            let fileEntry = $("#templateFileEntry").clone();
-
-            // Head:
-            fileEntry.attr("id", "fileEntry_" + taskIdentifier);
-            fileEntry.find("#templateHeading").attr("id", "heading_" + taskIdentifier);
-            fileEntry.find("#templateContainerDownloadInfo").attr("id", "containerDownloadInfo_" + taskIdentifier);
-            fileEntry.find("#templateContainerDownloadInfoText").attr("id", "containerDownloadInfoText_" + taskIdentifier);
-            fileEntry.find("#templateContainerDownloadInfoProgress").attr("id", "containerDownloadInfoProgress_" + taskIdentifier);
-            fileEntry.find("#templateContainerDownloadInfoButtonDownload").attr("id", "containerDownloadInfoButtonDownload_" + taskIdentifier);
-            // Change the download link to not toggle the body.
-            fileEntry.find("a[href='#templateBody']").first().text(" " + url).attr({ "data-toggle": "", href: "#body_" + taskIdentifier })
-                // Add minus in front of link.
-                .prepend(glyphiconMinus());
-            // Body:
-            fileEntry.find("#templateBody").attr("id", "body_" + taskIdentifier);
-
-            fileEntry.prependTo("#fileEntries");
-
-            // Show basic text in order to give users visual feedback.
-            let container = fileEntry.find("#containerDownloadInfo_" + taskIdentifier);
-            container.children("div").hide();
-            container.find("#containerDownloadInfoText_" + taskIdentifier).show().find("div[class='infoTextContainer']").text("Link queued...");
+            $("[name='VideoFormat']")[0].value = "none";
+            $("[name='AudioFormat']")[0].value = $("#formatName").text().toLowerCase();
         }
     });
-
-
-
-
 
     // SignalR code:
     let changeToPlaylistDisplay = function (task) {
         // Change the minus infront of the url and enable toggling.
         let fileEntry = $("#fileEntry_" + task);
-        if (fileEntry.find(".glyphicon").first().hasClass("glyphicon-minus")) {
-            fileEntry.find(".glyphicon").first().removeClass("glyphicon-minus").addClass("glyphicon-chevron-down");
-        }
-        fileEntry.find("a[href='#body_" + task + "']").first().attr("data-toggle", "collapse");
+        fileEntry.find(".glyphicon .glyphicon-minus").removeClass("glyphicon-minus").addClass("glyphicon-chevron-down");
+        fileEntry.find("a[href='#body_" + task + "']").attr("data-toggle", "collapse");
 
         // Open the body by default.
         let body = $("#body_" + task);
@@ -119,14 +47,12 @@ $(document).ready(function () {
     let changeToNormalDisplay = function (task) {
         // Change the chevron infront of the url and disable toggling.
         let fileEntry = $("#fileEntry_" + task);
-        if (fileEntry.find(".glyphicon").first().hasClass("glyphicon-chevron-down")) {
-            fileEntry.find(".glyphicon").first().removeClass("glyphicon-chevron-down").addClass("glyphicon-minus");
-        }
-        fileEntry.find("a[href='#body_" + task + "']").first().attr("data-toggle", "");
+        fileEntry.find(".glyphicon .glyphicon-chevron-down").removeClass("glyphicon-chevron-down").addClass("glyphicon-minus");
+        fileEntry.find("a[href='#body_" + task + "']").attr("data-toggle", "");
 
-        // Open the body by default.
+        // Close the body.
         let body = $("#body_" + task);
-        if (!body.hasClass("in")) {
+        if (body.hasClass("in")) {
             body.removeClass("in");
         }
     }
@@ -181,7 +107,7 @@ $(document).ready(function () {
         let infoText = "Gathering information...";
 
         // Info text on top must always be changed.
-        container.children("div").hide();
+        container.children("div").not(".downloadDeleteButton").hide();
         container.find("#containerDownloadInfoText_" + task).show()
             .find("div[class='infoTextContainer']").text(infoText);
 
@@ -217,7 +143,7 @@ $(document).ready(function () {
         let infoText = "Starting download...";
         
         // Change the info text of the container and sub entry.
-        container.children("div").hide();
+        container.children("div").not(".downloadDeleteButton").hide();
         container.find("#containerDownloadInfoText_" + task).show()
             .find("div[class='infoTextContainer']").text(infoText);
         subEntry.children("div").first().children("div").hide();
@@ -234,7 +160,7 @@ $(document).ready(function () {
         let subEntry = $("#body_" + task).first().find("#fileSubEntry_" + result).first();
 
         // Change the info text of the container.
-        container.children("div").hide();
+        container.children("div").not(".downloadDeleteButton").hide();
         container.find("#containerDownloadInfoText_" + task).show()
             .find("div[class='infoTextContainer']").text("Downloading...");
         // Display the progress bar in sub entry.
@@ -260,7 +186,7 @@ $(document).ready(function () {
         let infoText = "Converting... (This could take a while)";
 
         // Change the info text of the container.
-        container.children("div").hide();
+        container.children("div").not(".downloadDeleteButton").hide();
         container.find("#containerDownloadInfoText_" + task).show()
             .find("div[class='infoTextContainer']").text(infoText);
         // Change the text on the progress bar of the sub entry.
@@ -289,7 +215,7 @@ $(document).ready(function () {
         let container = $("#containerDownloadInfo_" + task);
 
         // Change the download button of the container accordingly.
-        container.children("div").hide();
+        container.children("div").not(".downloadDeleteButton").hide();
         // Only show the download button if at least two elements can be downloaded.
         if ($("#body_" + task).first().find(".list-group-item").not(".list-group-item-danger").length >= 2) {
             container.find("#containerDownloadInfoButtonDownload_" + task).show()

@@ -45,6 +45,12 @@ body {
     margin-bottom: 40px;
 }
 
+.fileHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
 .glyphiconContainer {
     text-align: center;
     vertical-align: middle;
@@ -77,10 +83,19 @@ body {
     justify-content: space-between;
 }
 
+.downloadInfoContainer {
+    display: flex;
+    align-items: center;
+}
+
 .downloadInfoProgress {
     height: 1.5em;
 }
 
 .downloadInfoProgress > .progress {
     width: 20vw;
+}
+
+.downloadDeleteButton {
+    margin-left: 10px;
 }

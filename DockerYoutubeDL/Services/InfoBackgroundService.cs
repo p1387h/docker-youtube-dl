@@ -26,7 +26,9 @@ namespace DockerYoutubeDL.Services
         private DownloadPathGenerator _pathGenerator;
         private NotificationService _notification;
 
+        private Guid _currentDownloadTaskId = new Guid();
         private Process _infoDownloadProcess = null;
+        private bool _wasKilledByInterrupt = false;
 
         public InfoBackgroundService(
             IDesignTimeDbContextFactory<DownloadContext> factory,
@@ -59,7 +61,7 @@ namespace DockerYoutubeDL.Services
                 // Find the next download Target.
                 using (var db = _factory.CreateDbContext(new string[0]))
                 {
-                    Func<DownloadTask, bool> selector = new Func<DownloadTask, bool>(x => !x.HadInformationGathered);
+                    Func<DownloadTask, bool> selector = new Func<DownloadTask, bool>(x => !x.HadInformationGathered && !x.WasInterrupted);
                     var now = DateTime.Now;
 
                     _logger.LogDebug("Checking for task that requires information gathering...");
@@ -76,9 +78,13 @@ namespace DockerYoutubeDL.Services
 
                         _logger.LogDebug($"Next download: Url={nextTask.Url}, Id={nextTask.Id}");
 
-                        // Gather all necessary information
+                        // Gather all necessary information.
+                        _currentDownloadTaskId = nextTask.Id;
                         var infoProcessInfo = await this.GenerateInfoProcessStartInfoAsync(nextTask.Id);
                         await this.InfoDownloadProcessAsync(infoProcessInfo, nextTask.Id);
+
+                        // Reset any set flag.
+                        _wasKilledByInterrupt = false;
 
                         // Allow for downloads to directly follow one another.
                         hasDownloaded = true;
@@ -132,21 +138,25 @@ namespace DockerYoutubeDL.Services
                 };
                 _infoDownloadProcess.Exited += (s, e) =>
                 {
-                    // Unavailable videos do not return the name of their playlist, thus not setting the 
-                    // flag correctly. This ensures that all flags are set accordingly.
-                    using (var db = _factory.CreateDbContext(new string[0]))
+                    // Prevent exceptions by only allowing non killed processes to continue.
+                    if (!_wasKilledByInterrupt)
                     {
-                        var downloadResults = db.DownloadResult
-                            .Include(x => x.DownloadTask)
-                            .Where(x => x.DownloadTask.Id == downloadTaskId)
-                            .ToList();
-                        downloadResults.ForEach(x => x.IsPartOfPlaylist = downloadResults.Count > 1);
+                        // Unavailable videos do not return the name of their playlist, thus not setting the 
+                        // flag correctly. This ensures that all flags are set accordingly.
+                        using (var db = _factory.CreateDbContext(new string[0]))
+                        {
+                            var downloadResults = db.DownloadResult
+                                .Include(x => x.DownloadTask)
+                                .Where(x => x.DownloadTask.Id == downloadTaskId)
+                                .ToList();
+                            downloadResults.ForEach(x => x.IsPartOfPlaylist = downloadResults.Count > 1);
 
-                        db.SaveChanges();
+                            db.SaveChanges();
+                        }
+
+                        // Task must be marked in order for the download task to pick it up.
+                        this.MarkDownloadTaskAsGathered(downloadTaskId);
                     }
-
-                    // Task must be marked in order for the download task to pick it up.
-                    this.MarkDownloadTaskAsGathered(downloadTaskId);
 
                     resetEvent.Set();
                 };
@@ -256,6 +266,7 @@ namespace DockerYoutubeDL.Services
                 };
 
                 _infoDownloadProcess.Start();
+
                 // Enables the asynchronus callback function to receive the redirected data.
                 _infoDownloadProcess.BeginOutputReadLine();
                 _infoDownloadProcess.BeginErrorReadLine();
@@ -263,8 +274,12 @@ namespace DockerYoutubeDL.Services
                 // Wait for the process to finish.
                 _logger.LogDebug("Waiting for the info download process to finish...");
                 resetEvent.WaitOne();
-                _logger.LogDebug($"Finished downloading information.");
 
+                // Diable the asynchronus callback functions.
+                _infoDownloadProcess.CancelOutputRead();
+                _infoDownloadProcess.CancelErrorRead();
+
+                _logger.LogDebug($"Finished downloading information.");
             }
             catch (Exception e)
             {
@@ -277,6 +292,9 @@ namespace DockerYoutubeDL.Services
             }
             finally
             {
+                // Prevents null pointer exceptions when killing the process.
+                _currentDownloadTaskId = new Guid();
+                _infoDownloadProcess.Dispose();
                 _infoDownloadProcess = null;
             }
 
@@ -301,5 +319,23 @@ namespace DockerYoutubeDL.Services
             }
         }
 
+        public Task HandleDownloadInterrupt(Guid downloadTaskId)
+        {
+            if (downloadTaskId == _currentDownloadTaskId)
+            {
+                // Set the flag indicating that the process was killed manually.
+                _wasKilledByInterrupt = true;
+
+                _logger.LogDebug($"Killing info process.");
+
+                _infoDownloadProcess.Kill();
+            }
+            else
+            {
+                _logger.LogError($"Error while handling interrupt request. Received task id {downloadTaskId} does not match the currently active one {_currentDownloadTaskId}");
+            }
+
+            return Task.CompletedTask;
+        }
     }
 }

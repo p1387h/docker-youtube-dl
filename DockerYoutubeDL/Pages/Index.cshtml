@@ -1,4 +1,4 @@
-﻿@page
+﻿@page "{handler?}"
 @model IndexModel
 @{
     ViewData["Title"] = "YoutubeDL";
@@ -6,9 +6,11 @@
 
 <div class="container" id="containerInput">
     <div class="row">
-        <form class="form-horizontal col-xs-12 col-xs-offset-0 col-sm-10 col-sm-offset-1">
+        <form class="form-horizontal col-xs-12 col-xs-offset-0 col-sm-10 col-sm-offset-1" method="post" action=".?handler=newTask">
+            @Html.AntiForgeryToken()
+
             <div class="input-group">
-                <input type="text" class="form-control" placeholder="https://www.youtube.com/watch?v=" id="inputDownload" />
+                <input type="text" class="form-control" placeholder="https://www.youtube.com/watch?v=" id="inputDownload" name="Url" />
                 <div class="input-group-btn">
                     <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" id="formatDisplay">
                         <span class="glyphicon glyphicon-film"></span>
@@ -37,9 +39,12 @@
                     </ul>
                 </div>
 
-                <span class="input-group-btn">
-                    <input type="button" value="Download" class="btn btn-primary" id="buttonDownload">
-                </span>
+                <input type="hidden" name="VideoFormat" value="mp4" />
+                <input type="hidden" name="AudioFormat" value="none" />
+
+                <div class="input-group-btn">
+                    <button type="submit" class="btn btn-primary" id="buttonDownload">Download</button>
+                </div>
             </div>
         </form>
     </div>
@@ -47,7 +52,14 @@
 
 <hr />
 
-<h2>Files</h2>
+<div class="container-fluid">
+    <div class="fileHeader">
+        <h2>Files</h2>
+        <a href="." class="btn btn-default pull-right">
+            <span class="glyphicon glyphicon-refresh"></span>
+        </a>
+    </div>
+</div>
 
 <div class="panel-group" id="fileEntries" role="tablist">
     <div id="filesTextContainer" class="text-center" @(Model.DownloadTasks.Any() ? "hidden=hidden" : null)>
@@ -59,35 +71,37 @@
 
         foreach (var task in Model.DownloadTasks)
         {
-            <div class="panel panel-default" id="templateFileEntry">
+            <div class="panel panel-default" id="ileEntry_@task.Id">
                 <div class="panel-heading" role="tab" id="heading_@task.Id">
                     <div class="listHeader">
                         <h4 class="panel-title">
                             <a role="button" data-toggle="collapse" data-parent="#heading_@task.Id" href="#body_@task.Id">
-                                <span class="glyphicon glyphicon-chevron-down"></span>
+                                <span class="glyphicon glyphicon-@(task.DownloadResult.Any()? "chevron-down" : "minus")"></span>
                                 @task.Url
                             </a>
                         </h4>
-                        <div id="containerDownloadInfo_@task.Id">
+                        <div id="containerDownloadInfo_@task.Id" class="downloadInfoContainer">
                             <!-- Container for any information that should be displayed to the user on the right side. -->
                             <div id="containerDownloadInfoText_@task.Id" @(task.WasDownloaded ? "hidden=hidden" : null)>
                                 <div class="listHeader">
-                                    <div style="vertical-align:middle" class="infoTextContainer">@wsWaiting</div>
+                                    <div style="vertical-align:middle" class="infoTextContainer">@(Model.RecentlyAddedTaskIdentifier == task.Id? "Link queued..." : wsWaiting)</div>
                                     <img src="~/images/loading.gif" class="pull-right loadingGif" />
-                                </div>
-                            </div>
-                            <div id="containerDownloadInfoProgress_@task.Id" class="downloadInfoProgress" hidden="hidden">
-                                <div class="progress">
-                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:1%;">0%</div>
                                 </div>
                             </div>
                             <div id="containerDownloadInfoButtonDownload_@task.Id" @(task.WasDownloaded && task.DownloadResult.Count >= 2 ? null : "hidden=hidden")>
                                 <a href="./download?taskIdentifier=@task.Id" class="btn btn-primary btn-sm" style="color:white">Download as .zip</a>
                             </div>
+                            <form method="post" action=".?handler=deleteTask">
+                                @Html.AntiForgeryToken()
+
+                                <button type="submit" class="btn btn-danger pull-right downloadDeleteButton" name="RemoveTaskId" value="@task.Id">
+                                    <span class="glyphicon glyphicon-trash"></span>
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>
-                <div id="body_@task.Id" class="panel-collapse collapse in" role="tabpanel">
+                <div id="body_@task.Id" class="panel-collapse collapse @(task.DownloadResult.Any()? "in" : null)" role="tabpanel">
                     <div class="panel-body">
                         <ul class="list-group">
                             <!-- TemplateFileSubEntries can be added here -->
@@ -97,7 +111,7 @@
                                     <li class="list-group-item @(result.HasError? "list-group-item-danger" : null)" id="fileSubEntry_@result.Id">
                                         <div class="fileSubEntry">
                                             <span>@(result.HasError ? result.Message : result.Name)</span>
-                                            <div id="containerDownloadInfoText_@result.Id" @(result.WasDownloaded? "hidden=hidden" : null)>
+                                            <div id="containerDownloadInfoText_@result.Id" @(result.WasDownloaded ? "hidden=hidden" : null)>
                                                 <div class="listHeader">
                                                     <div style="vertical-align:middle" class="infoTextContainer">@wsWaiting</div>
                                                     <img src="~/images/loading.gif" class="pull-right loadingGif" />
@@ -108,7 +122,7 @@
                                                     <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:1%;">1%</div>
                                                 </div>
                                             </div>
-                                            <div id="containerDownloadInfoButtonDownload_@result.Id" @(result.WasDownloaded? null : "hidden=hidden")>
+                                            <div id="containerDownloadInfoButtonDownload_@result.Id" @(result.WasDownloaded ? null : "hidden=hidden")>
                                                 <a href="./download?taskIdentifier=@task.Id&taskResultIdentifier=@result.Id" class="btn btn-primary btn-sm" style="color:white">Download</a>
                                             </div>
                                         </div>
@@ -133,7 +147,7 @@
                             PLACEHOLDER
                         </a>
                     </h4>
-                    <div id="templateContainerDownloadInfo">
+                    <div id="templateContainerDownloadInfo" class="downloadInfoContainer">
                         <!-- Container for any information that should be displayed to the user on the right side. -->
                         <div id="templateContainerDownloadInfoText" hidden="hidden">
                             <div class="listHeader">
@@ -141,14 +155,16 @@
                                 <img src="~/images/loading.gif" class="pull-right loadingGif" />
                             </div>
                         </div>
-                        <div id="templateContainerDownloadInfoProgress" class="downloadInfoProgress" hidden="hidden">
-                            <div class="progress">
-                                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:1%;">0%</div>
-                            </div>
-                        </div>
                         <div id="templateContainerDownloadInfoButtonDownload" hidden="hidden">
                             <a href="#" class="btn btn-primary btn-sm" style="color:white">Download as .zip</a>
                         </div>
+                        <form method="post" action=".?handler=deleteTask">
+                            @Html.AntiForgeryToken()
+
+                            <button type="submit" class="btn btn-danger pull-right downloadDeleteButton" name="RemoveTaskId" value="">
+                                <span class="glyphicon glyphicon-trash"></span>
+                            </button>
+                        </form>
                     </div>
                 </div>
             </div>
