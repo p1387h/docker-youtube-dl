@@ -48,7 +48,6 @@ namespace DockerYoutubeDL
             services.AddSingleton<NotificationService>();
 
             // SignalR components:
-            services.AddTransient<UpdateHub>();
             services.AddSignalR();
 
             // Information background service:
