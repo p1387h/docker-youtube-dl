@@ -99,7 +99,9 @@
                                             }
                                         }
                                     </div>
-                                    <img src="~/images/loading.gif" class="pull-right loadingGif" @(task.HadDownloaderError ? "hidden=hidden" : null) />
+                                    <div @(task.HadDownloaderError ? "hidden=hidden" : null)>
+                                        <img src="~/images/loading.gif" class="pull-right loadingGif" />
+                                    </div>
                                 </div>
                             </div>
                             <div id="containerDownloadInfoButtonDownload_@task.Id" @(task.WasDownloaded && task.DownloadResult.Count(x => !x.HasError) >= 2 ? null : "hidden=hidden")>
@@ -166,9 +168,11 @@
                         <div id="templateContainerDownloadInfoText" hidden="hidden">
                             <div class="listHeader">
                                 <div style="vertical-align:middle" class="infoTextContainer">PLACEHOLDER</div>
-                                <img src="~/images/loading.gif" class="pull-right loadingGif" />
+                                <div>
+                                    <img src="~/images/loading.gif" class="pull-right loadingGif" />
+                                </div>
                             </div>
-                        </div>
+                            </div>
                         <div id="templateContainerDownloadInfoButtonDownload" hidden="hidden">
                             <a href="#" class="btn btn-primary btn-sm" style="color:white">Download as .zip</a>
                         </div>
