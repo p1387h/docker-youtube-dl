@@ -88,7 +88,7 @@
                                     <img src="~/images/loading.gif" class="pull-right loadingGif" />
                                 </div>
                             </div>
-                            <div id="containerDownloadInfoButtonDownload_@task.Id" @(task.WasDownloaded && task.DownloadResult.Count >= 2 ? null : "hidden=hidden")>
+                            <div id="containerDownloadInfoButtonDownload_@task.Id" @(task.WasDownloaded && task.DownloadResult.Count(x => !x.HasError) >= 2 ? null : "hidden=hidden")>
                                 <a href="./download?taskIdentifier=@task.Id" class="btn btn-primary btn-sm" style="color:white">Download as .zip</a>
                             </div>
                             <form method="post" action=".?handler=deleteTask">
@@ -122,7 +122,7 @@
                                                     <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:1%;">1%</div>
                                                 </div>
                                             </div>
-                                            <div id="containerDownloadInfoButtonDownload_@result.Id" @(result.WasDownloaded ? null : "hidden=hidden")>
+                                            <div id="containerDownloadInfoButtonDownload_@result.Id" @(result.WasDownloaded && !result.HasError ? null : "hidden=hidden")>
                                                 <a href="./download?taskIdentifier=@task.Id&taskResultIdentifier=@result.Id" class="btn btn-primary btn-sm" style="color:white">Download</a>
                                             </div>
                                         </div>
