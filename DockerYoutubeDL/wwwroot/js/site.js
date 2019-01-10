@@ -24,9 +24,11 @@ $(document).ready(function () {
         if ($("#formatDisplay .glyphicon-film").length > 0) {
             $("[name='VideoFormat']")[0].value = $("#formatName").text().toLowerCase();
             $("[name='AudioFormat']")[0].value = "none";
+            $("#containerVideoQuality").show();
         } else {
             $("[name='VideoFormat']")[0].value = "none";
             $("[name='AudioFormat']")[0].value = $("#formatName").text().toLowerCase();
+            $("#containerVideoQuality").hide();
         }
     });
 

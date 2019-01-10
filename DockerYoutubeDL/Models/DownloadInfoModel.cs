@@ -16,5 +16,7 @@ namespace DockerYoutubeDL.Models
         public AudioFormat AudioFormat { get; set; }
 
         public VideoFormat VideoFormat { get; set; }
+
+        public VideoQuality VideoQuality { get; set; }
     }
 }

@@ -103,6 +103,7 @@ namespace DockerYoutubeDL.Pages
                     DateAdded = DateTime.Now,
                     AudioFormat = downloadInfo.AudioFormat,
                     VideoFormat = downloadInfo.VideoFormat,
+                    VideoQuality = downloadInfo.VideoQuality,
                     HadInformationGathered = false
                 };
 

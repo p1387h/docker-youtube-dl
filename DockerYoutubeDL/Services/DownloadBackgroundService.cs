@@ -165,7 +165,7 @@ namespace DockerYoutubeDL.Services
                     arguments.AddRange(new List<string>
                     {
                         "-f",
-                        "best",
+                        (downloadTask.VideoQuality == VideoQuality.BestOverall)? "best" : "bestvideo+bestaudio/best",
                         "--recode-video",
                         Enum.GetName(typeof(VideoFormat), downloadTask.VideoFormat).ToLower()
                     });

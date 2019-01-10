@@ -9,41 +9,60 @@
         <form class="form-horizontal col-xs-12 col-xs-offset-0 col-sm-10 col-sm-offset-1" method="post" action=".?handler=newTask">
             @Html.AntiForgeryToken()
 
-            <div class="input-group">
-                <input type="text" class="form-control" placeholder="https://www.youtube.com/watch?v=" id="inputDownload" name="Url" />
-                <div class="input-group-btn">
-                    <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" id="formatDisplay">
-                        <span class="glyphicon glyphicon-film"></span>
-                        <span id="formatName">MP4</span>
-                        <span class="caret"></span>
-                    </button>
-                    <ul class="dropdown-menu" id="formatSelection">
-                        <!-- Video -->
-                        <li class="dropdown-header"><span class="glyphicon glyphicon-film"> Video:</span></li>
-                        <li><a href="#" class="video_mp4">MP4</a></li>
-                        <li><a href="#" class="video_flv">FLV</a></li>
-                        <li><a href="#" class="video_ogg">OGG</a></li>
-                        <li><a href="#" class="video_webm">WEBM</a></li>
-                        <li><a href="#" class="video_mkv">MKV</a></li>
-                        <li><a href="#" class="video_avi">AVI</a></li>
+            <div class="form-group">
+                <div class="input-group">
+                    <input type="text" class="form-control" placeholder="https://www.youtube.com/watch?v=" id="inputDownload" name="Url" />
+                    <div class="input-group-btn">
+                        <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" id="formatDisplay">
+                            <span class="glyphicon glyphicon-film"></span>
+                            <span id="formatName">MP4</span>
+                            <span class="caret"></span>
+                        </button>
+                        <ul class="dropdown-menu" id="formatSelection">
+                            <!-- Video -->
+                            <li class="dropdown-header"><span class="glyphicon glyphicon-film"> Video:</span></li>
+                            <li><a href="#" class="video_mp4">MP4</a></li>
+                            <li><a href="#" class="video_flv">FLV</a></li>
+                            <li><a href="#" class="video_ogg">OGG</a></li>
+                            <li><a href="#" class="video_webm">WEBM</a></li>
+                            <li><a href="#" class="video_mkv">MKV</a></li>
+                            <li><a href="#" class="video_avi">AVI</a></li>
 
-                        <!-- Audio -->
-                        <li role="separator" class="divider"></li>
-                        <li class="dropdown-header"><span class="glyphicon glyphicon-music"> Audio:</span></li>
-                        <li><a href="#" class="audio_mp3">MP3</a></li>
-                        <li><a href="#" class="audio_aac">AAC</a></li>
-                        <li><a href="#" class="audio_flac">FLAC</a></li>
-                        <li><a href="#" class="audio_opus">OPUS</a></li>
-                        <li><a href="#" class="audio_vorbis">VORBIS</a></li>
-                        <li><a href="#" class="audio_wav">WAV</a></li>
-                    </ul>
+                            <!-- Audio -->
+                            <li role="separator" class="divider"></li>
+                            <li class="dropdown-header"><span class="glyphicon glyphicon-music"> Audio:</span></li>
+                            <li><a href="#" class="audio_mp3">MP3</a></li>
+                            <li><a href="#" class="audio_aac">AAC</a></li>
+                            <li><a href="#" class="audio_flac">FLAC</a></li>
+                            <li><a href="#" class="audio_opus">OPUS</a></li>
+                            <li><a href="#" class="audio_vorbis">VORBIS</a></li>
+                            <li><a href="#" class="audio_wav">WAV</a></li>
+                        </ul>
+                    </div>
+
+                    <input type="hidden" name="VideoFormat" value="mp4" />
+                    <input type="hidden" name="AudioFormat" value="none" />
+
+                    <div class="input-group-btn">
+                        <button type="submit" class="btn btn-primary" id="buttonDownload">Download</button>
+                    </div>
                 </div>
+            </div>
 
-                <input type="hidden" name="VideoFormat" value="mp4" />
-                <input type="hidden" name="AudioFormat" value="none" />
-
-                <div class="input-group-btn">
-                    <button type="submit" class="btn btn-primary" id="buttonDownload">Download</button>
+            <div class="form-group" id="containerVideoQuality">
+                <div class="col-sm-6">
+                    <div class="radio radio-primary">
+                        <input type="radio" name="videoQuality" id="radioBestOverall" value="bestOverall" checked="checked">
+                        <label for="radioBestOverall">
+                            Download best overall quality
+                        </label>
+                    </div>
+                    <div class="radio radio-primary">
+                        <input type="radio" name="videoQuality" id="radioBestMerge" value="bestMerge">
+                        <label for="radioBestMerge">
+                            Download best video/best audio and merge (may take a long time)
+                        </label>
+                    </div>
                 </div>
             </div>
         </form>
@@ -172,7 +191,7 @@
                                     <img src="~/images/loading.gif" class="pull-right loadingGif" />
                                 </div>
                             </div>
-                            </div>
+                        </div>
                         <div id="templateContainerDownloadInfoButtonDownload" hidden="hidden">
                             <a href="#" class="btn btn-primary btn-sm" style="color:white">Download as .zip</a>
                         </div>
