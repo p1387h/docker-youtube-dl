@@ -22,12 +22,12 @@ $(document).ready(function () {
 
         // Change the hidden fields.
         if ($("#formatDisplay .glyphicon-film").length > 0) {
-            $("[name='VideoFormat']")[0].value = $("#formatName").text().toLowerCase();
-            $("[name='AudioFormat']")[0].value = "none";
+            $("[name='VideoFormat']")[0].value = $("#formatName").text();
+            $("[name='AudioFormat']")[0].value = "None";
             $("#containerVideoQuality").show();
         } else {
-            $("[name='VideoFormat']")[0].value = "none";
-            $("[name='AudioFormat']")[0].value = $("#formatName").text().toLowerCase();
+            $("[name='VideoFormat']")[0].value = "None";
+            $("[name='AudioFormat']")[0].value = $("#formatName").text();
             $("#containerVideoQuality").hide();
         }
     });

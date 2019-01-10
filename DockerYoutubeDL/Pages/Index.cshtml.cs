@@ -22,6 +22,14 @@ namespace DockerYoutubeDL.Pages
         public List<DownloadTask> DownloadTasks { get; set; }
         public Guid RecentlyAddedTaskIdentifier { get; set; }
 
+        // Quality of life features. Users don't have to select same setting again:
+        [BindProperty(SupportsGet = true)]
+        public AudioFormat SelectedAudioFormat { get; set; }
+        [BindProperty(SupportsGet = true)]
+        public VideoFormat SelectedVideoFormat { get; set; }
+        [BindProperty(SupportsGet = true)]
+        public VideoQuality SelectedVideoQuality { get; set; }
+
         private DownloadContext _context;
         private ILogger _logger;
         private DownloadBackgroundService _downloadService;
@@ -30,14 +38,14 @@ namespace DockerYoutubeDL.Pages
         private DownloadPathGenerator _pathGenerator;
 
         public IndexModel(
-            DownloadContext context, 
+            DownloadContext context,
             ILogger<IndexModel> logger,
             DownloadBackgroundService downloadService,
             InfoBackgroundService infoService,
             NotificationService notification,
             DownloadPathGenerator pathGenerator)
         {
-            if (context == null || logger == null || downloadService == null || 
+            if (context == null || logger == null || downloadService == null ||
                 infoService == null || notification == null || pathGenerator == null)
             {
                 throw new ArgumentException();
@@ -54,6 +62,14 @@ namespace DockerYoutubeDL.Pages
         public void OnGet()
         {
             this.LoadDownloadTasks();
+
+            // Initial loading of the page.
+            if(this.SelectedAudioFormat == AudioFormat.None && this.SelectedVideoFormat == VideoFormat.None)
+            {
+                this.SelectedAudioFormat = AudioFormat.None;
+                this.SelectedVideoFormat = VideoFormat.Mp4;
+                this.SelectedVideoQuality = VideoQuality.BestOverall;
+            }
         }
 
         public async Task OnPostDeleteTask([FromForm] Guid removeTaskId)
@@ -62,7 +78,7 @@ namespace DockerYoutubeDL.Pages
             {
                 var storedTask = await _context.DownloadTask.FindAsync(removeTaskId);
 
-                if(storedTask != null)
+                if (storedTask != null)
                 {
                     var retryCount = 8;
 
@@ -114,6 +130,7 @@ namespace DockerYoutubeDL.Pages
 
                 // Prepare the view.
                 this.RecentlyAddedTaskIdentifier = downloadTask.Id;
+                this.UpdateLastSelectedValues(downloadInfo);
             }
 
             this.LoadDownloadTasks();
@@ -130,12 +147,36 @@ namespace DockerYoutubeDL.Pages
                 .ToList();
         }
 
+        private void UpdateLastSelectedValues(DownloadInfoModel downloadInfo)
+        {
+            // Fix for hidden fields not correctly updating themselves. Without removing the 
+            // existing key before assigning the new values, the "Html.HiddenFor()"-helper is 
+            // prioritising the previously send POST data.
+            ModelState.Remove(nameof(this.SelectedAudioFormat));
+            ModelState.Remove(nameof(this.SelectedVideoFormat));
+            ModelState.Remove(nameof(this.SelectedVideoQuality));
+
+            // Video chosen.
+            if (downloadInfo.AudioFormat == AudioFormat.None) {
+                this.SelectedAudioFormat = AudioFormat.None;
+                this.SelectedVideoFormat = downloadInfo.VideoFormat;
+                this.SelectedVideoQuality = downloadInfo.VideoQuality;
+            }
+            // Audio chosen.
+            else if(downloadInfo.VideoFormat == VideoFormat.None)
+            {
+                this.SelectedAudioFormat = downloadInfo.AudioFormat;
+                this.SelectedVideoFormat = VideoFormat.None;
+                this.SelectedVideoQuality = downloadInfo.VideoQuality;
+            }
+        }
+
         private async Task MarkTaskAsInterruptedAsync(Guid downloadTaskId)
         {
             var downloadTask = await _context.DownloadTask.FindAsync(downloadTaskId);
-            
+
             // Prevent Exceptions.
-            if(downloadTask != null)
+            if (downloadTask != null)
             {
                 downloadTask.WasInterrupted = true;
 

@@ -15,7 +15,22 @@
                     <div class="input-group-btn">
                         <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" id="formatDisplay">
                             <span class="glyphicon glyphicon-film"></span>
-                            <span id="formatName">MP4</span>
+                            <span id="formatName">
+                                @{ 
+                                    if(Model.SelectedVideoFormat == DAL.VideoFormat.None)
+                                    {
+                                        @Model.SelectedAudioFormat;
+                                    }
+                                    else if(Model.SelectedAudioFormat == DAL.AudioFormat.None)
+                                    {
+                                        @Model.SelectedVideoFormat;
+                                    }
+                                    else
+                                    {
+                                         @("ERROR");
+                                    }
+                                }
+                            </span>
                             <span class="caret"></span>
                         </button>
                         <ul class="dropdown-menu" id="formatSelection">
@@ -40,8 +55,12 @@
                         </ul>
                     </div>
 
-                    <input type="hidden" name="VideoFormat" value="mp4" />
-                    <input type="hidden" name="AudioFormat" value="none" />
+                    @Html.HiddenFor(x => x.SelectedAudioFormat)
+                    @Html.HiddenFor(x => x.SelectedVideoFormat)
+                    @Html.HiddenFor(x => x.SelectedVideoQuality)
+
+                    <input type="hidden" name="VideoFormat" value="@Model.SelectedVideoFormat" />
+                    <input type="hidden" name="AudioFormat" value="@Model.SelectedAudioFormat" />
 
                     <div class="input-group-btn">
                         <button type="submit" class="btn btn-primary" id="buttonDownload">Download</button>
@@ -49,16 +68,16 @@
                 </div>
             </div>
 
-            <div class="form-group" id="containerVideoQuality">
+            <div class="form-group" id="containerVideoQuality" @(Model.SelectedVideoFormat == DAL.VideoFormat.None? "hidden=hidden" : null)>
                 <div class="col-sm-6">
                     <div class="radio radio-primary">
-                        <input type="radio" name="videoQuality" id="radioBestOverall" value="bestOverall" checked="checked">
+                        <input type="radio" name="videoQuality" id="radioBestOverall" value="bestOverall" @(Model.SelectedVideoQuality == DAL.VideoQuality.BestOverall? "checked=checked" : null)>
                         <label for="radioBestOverall">
                             Download best overall quality
                         </label>
                     </div>
                     <div class="radio radio-primary">
-                        <input type="radio" name="videoQuality" id="radioBestMerge" value="bestMerge">
+                        <input type="radio" name="videoQuality" id="radioBestMerge" value="bestMerge" @(Model.SelectedVideoQuality == DAL.VideoQuality.BestOverall? null : "checked=checked")>
                         <label for="radioBestMerge">
                             Download best video/best audio and merge (may take a long time)
                         </label>
@@ -74,9 +93,15 @@
 <div class="container-fluid">
     <div class="fileHeader">
         <h2>Files</h2>
-        <a href="." class="btn btn-default pull-right">
-            <span class="glyphicon glyphicon-refresh"></span>
-        </a>
+        <form action="." method="get">
+            @Html.HiddenFor(x => x.SelectedAudioFormat)
+            @Html.HiddenFor(x => x.SelectedVideoFormat)
+            @Html.HiddenFor(x => x.SelectedVideoQuality)
+
+            <button type="submit" class="btn btn-default pull-right">
+                <span class="glyphicon glyphicon-refresh"></span>
+            </button>
+        </form>
     </div>
 </div>
 
@@ -128,6 +153,10 @@
                             </div>
                             <form method="post" action=".?handler=deleteTask">
                                 @Html.AntiForgeryToken()
+
+                                @Html.HiddenFor(x => Model.SelectedAudioFormat)
+                                @Html.HiddenFor(x => Model.SelectedVideoFormat)
+                                @Html.HiddenFor(x => Model.SelectedVideoQuality)
 
                                 <button type="submit" class="btn btn-danger pull-right downloadDeleteButton" name="RemoveTaskId" value="@task.Id">
                                     <span class="glyphicon glyphicon-trash"></span>
