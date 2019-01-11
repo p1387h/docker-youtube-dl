@@ -2,7 +2,19 @@
 // for details on configuring this project to bundle and minify static web assets.
 
 // Write your Javascript code.
-$(document).ready(function () {
+$(document).ready(function() {
+    // Logging settings.
+    let allowLogging = false;
+    let oldLog = console.log;
+    // Values: [Error, Warning, Information, Trace]
+    let signalRLogLevel = signalR.LogLevel.Warning;
+
+    console.log = function(message) {
+        if (allowLogging) {
+            oldLog(message);
+        }
+    }
+
     // Format selection must change the different fields of the form.
     $("#formatSelection li a").on("click", function () {
         let selectedFormatInfo = $(this).attr("class").split("_");
@@ -78,7 +90,7 @@ $(document).ready(function () {
 
     let connection = new signalR.HubConnectionBuilder()
         .withUrl("/ws")
-        .configureLogging(signalR.LogLevel.Information)
+        .configureLogging(signalRLogLevel)
         .build();
 
     let start = async function () {
