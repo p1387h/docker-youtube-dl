@@ -64,7 +64,7 @@ namespace DockerYoutubeDL.Pages
             this.LoadDownloadTasks();
 
             // Initial loading of the page.
-            if(this.SelectedAudioFormat == AudioFormat.None && this.SelectedVideoFormat == VideoFormat.None)
+            if (this.SelectedAudioFormat == AudioFormat.None && this.SelectedVideoFormat == VideoFormat.None)
             {
                 this.SelectedAudioFormat = AudioFormat.None;
                 this.SelectedVideoFormat = VideoFormat.Mp4;
@@ -101,6 +101,7 @@ namespace DockerYoutubeDL.Pages
 
                     // After killing all processes etc. remove the directory. Started in own task 
                     // since polly is used for removing the files, which could lead to timeouts.
+#pragma warning disable CS4014
                     Task.Run(async () => await this.DeleteDownloadFilesAsync(removeTaskId, retryCount));
                 }
             }
@@ -157,13 +158,14 @@ namespace DockerYoutubeDL.Pages
             ModelState.Remove(nameof(this.SelectedVideoQuality));
 
             // Video chosen.
-            if (downloadInfo.AudioFormat == AudioFormat.None) {
+            if (downloadInfo.AudioFormat == AudioFormat.None)
+            {
                 this.SelectedAudioFormat = AudioFormat.None;
                 this.SelectedVideoFormat = downloadInfo.VideoFormat;
                 this.SelectedVideoQuality = downloadInfo.VideoQuality;
             }
             // Audio chosen.
-            else if(downloadInfo.VideoFormat == VideoFormat.None)
+            else if (downloadInfo.VideoFormat == VideoFormat.None)
             {
                 this.SelectedAudioFormat = downloadInfo.AudioFormat;
                 this.SelectedVideoFormat = VideoFormat.None;
