@@ -36,7 +36,7 @@ $(document).ready(function () {
     let changeToPlaylistDisplay = function (task) {
         // Change the minus infront of the url and enable toggling.
         let fileEntry = $("#fileEntry_" + task);
-        fileEntry.find(".glyphicon .glyphicon-minus").removeClass("glyphicon-minus").addClass("glyphicon-chevron-down");
+        fileEntry.find(".glyphicon-minus").removeClass("glyphicon-minus").addClass("glyphicon-chevron-down");
         fileEntry.find("a[href='#body_" + task + "']").attr("data-toggle", "collapse");
 
         // Open the body by default.
@@ -49,7 +49,7 @@ $(document).ready(function () {
     let changeToNormalDisplay = function (task) {
         // Change the chevron infront of the url and disable toggling.
         let fileEntry = $("#fileEntry_" + task);
-        fileEntry.find(".glyphicon .glyphicon-chevron-down").removeClass("glyphicon-chevron-down").addClass("glyphicon-minus");
+        fileEntry.find(".glyphicon-chevron-down").removeClass("glyphicon-chevron-down").addClass("glyphicon-minus");
         fileEntry.find("a[href='#body_" + task + "']").attr("data-toggle", "");
 
         // Close the body.
