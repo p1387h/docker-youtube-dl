@@ -143,6 +143,7 @@ namespace DockerYoutubeDL.Services
                 {
                     "--no-call-home",
                     "--ignore-errors",
+                    "--restrict-filenames",
                     "--ffmpeg-location",
                     $"{ffmpegLocation}",
                     "-o",
