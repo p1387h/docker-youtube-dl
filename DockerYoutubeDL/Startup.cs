@@ -69,6 +69,10 @@ namespace DockerYoutubeDL
                 app.UseDeveloperExceptionPage();
             }
 
+            // Enable changing the base path to custom value. I.e.:
+            // localhost/API => localhost/customBasePath/API
+            app.UsePathBase(this.Configuration.GetValue<string>("BasePath"));
+
             app.UseStaticFiles();
             app.UseAuthentication();
 
