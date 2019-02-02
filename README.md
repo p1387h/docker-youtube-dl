@@ -42,6 +42,7 @@ These environment variables can be changed when starting the container:
 
 |Environment variable|Assigned default value|Description|
 |-|-|-|
+|BasePath|/|The base path of the application. I.e.: localhost/API can be changed to localhost/customBasePath/API.|
 |InfoCheckIntervalSeconds|10|The interval in which the info gathering process is checking the database for new entries.|
 |DownloadCheckIntervalSeconds|10|The interval in which the download process is checking the database for downloadable entries.|
 |Logging:LogLevel:Default|Warning|The log level of the .Net Core application [Trace, Debug, Information, Warning, Error, Critical, None].|
