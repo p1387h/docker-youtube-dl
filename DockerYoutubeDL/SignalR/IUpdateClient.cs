@@ -9,8 +9,6 @@ namespace DockerYoutubeDL.SignalR
 {
     public interface IUpdateClient
     {
-        // Id of the task (received when it got queued up) and id of the result corresponding to the task.
-
         // Send from info process.
         Task ReceivedDownloadInfo(YoutubeDlOutputInfo outputInfo);
         Task DownloadFailed(YoutubeDlOutputInfo outputInfo);
@@ -24,8 +22,5 @@ namespace DockerYoutubeDL.SignalR
         Task DownloadInterrupted(Guid taskIdentifier);
         // Error in the main download process. Causes a whole download task to fail.
         Task DownloaderError(Guid taskIdentifier);
-
-        // Test if a client disconnected or just downloaded a file.
-        Task Ping();
     }
 }

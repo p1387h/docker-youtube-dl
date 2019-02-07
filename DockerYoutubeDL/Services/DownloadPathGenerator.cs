@@ -11,7 +11,7 @@ namespace DockerYoutubeDL.Services
     {
         private IConfiguration _config;
 
-        public string NameDilimiter { get; private set; }
+        public string NameDilimiter { get; private set; } = "-----------";
 
         public DownloadPathGenerator(IConfiguration config)
         {
@@ -21,8 +21,6 @@ namespace DockerYoutubeDL.Services
             }
 
             _config = config;
-
-            this.NameDilimiter = "-----------";
         }
 
         public string GenerateDownloadFolderPath()

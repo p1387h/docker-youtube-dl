@@ -393,7 +393,6 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-
         private void SavePathForDownloadResult(Guid downloadTaskId, string videoIdentifier)
         {
             using (var db = _factory.CreateDbContext(new string[0]))
