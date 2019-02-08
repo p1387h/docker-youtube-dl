@@ -423,7 +423,7 @@ namespace DockerYoutubeDL.Services
                 }
                 catch (Exception e)
                 {
-                    _logger.LogError(e, $"Error while tupdating the file path of task id={downloadTaskId}, videoIdentifier={videoIdentifier}.");
+                    _logger.LogError(e, $"Error while updating the file path of task id={downloadTaskId}, videoIdentifier={videoIdentifier}.");
                 }
             }
         }
