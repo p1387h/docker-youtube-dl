@@ -64,11 +64,6 @@ namespace DockerYoutubeDL.Services
             _notification = notification;
         }
 
-
-
-
-
-
         public async Task ExecuteAsync(IJobCancellationToken token, Guid downloadTaskIdentifier)
         {
             _logger.LogDebug($"DownloadService started for: {downloadTaskIdentifier}");
@@ -98,73 +93,11 @@ namespace DockerYoutubeDL.Services
             }
             catch (OperationCanceledException)
             {
-                await this.HandleDownloadInterrupt(_downloadTaskId);
+                this.HandleDownloadInterrupt();
                 _logger.LogInformation("Running Hangfire background job stopped: Info");
             }
 
             await infoProcessTask;
-        }
-
-
-
-
-
-
-
-
-
-
-        protected async Task ExecuteAsync(CancellationToken stoppingToken)
-        {
-            _logger.LogDebug("DownloadBackgroundService started.");
-
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                var hasDownloaded = false;
-
-                // Find the next download Target.
-                using (var db = _factory.CreateDbContext(new string[0]))
-                {
-                    Func<DownloadTask, bool> selector = new Func<DownloadTask, bool>(x => 
-                        x.HadInformationGathered && 
-                        !x.WasDownloaded && 
-                        !x.WasInterrupted && 
-                        !x.HadDownloaderError);
-                    var now = DateTime.Now;
-
-                    _logger.LogDebug("Checking for pending download task...");
-
-                    if (db.DownloadTask.Any(selector))
-                    {
-                        // Next task is the one that was queued earliest and was not yet downloaded. 
-                        var nextTask = db.DownloadTask
-                            .Where(selector)
-                            .Select(x => new Tuple<DownloadTask, TimeSpan>(x, now.Subtract(x.DateAdded)))
-                            .OrderByDescending(x => x.Item2)
-                            .FirstOrDefault()
-                            .Item1;
-
-                        _logger.LogDebug($"Next download: Url={nextTask.Url}, Id={nextTask.Id}");
-
-                        // Gather all necessary information.
-                        _downloadTaskId = nextTask.Id;
-                        var mainProcessInfo = await this.GenerateMainProcessStartInfoAsync();
-                        await this.MainDownloadProcessAsync(mainProcessInfo);
-
-                        // Reset any set flag.
-                        _wasKilledByInterrupt = false;
-
-                        // Allow for downloads to directly follow one another.
-                        hasDownloaded = true;
-                    }
-                }
-
-                // Don't wait inbetween downloads if more are queued.
-                if (!hasDownloaded)
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(_config.GetValue<int>("DownloadCheckIntervalSeconds")), stoppingToken);
-                }
-            }
         }
 
         private async Task<ProcessStartInfo> GenerateMainProcessStartInfoAsync()
@@ -276,10 +209,7 @@ namespace DockerYoutubeDL.Services
                 _logger.LogError(e, "Main download process threw an exception:");
 
                 _resetEvent.Set();
-
-                // Prevent infinite loops.
                 this.MarkDownloadTaskAsDownloaderError(_downloadTaskId);
-
                 await _notification.NotifyClientsAboutDownloaderError(_downloadTaskId);
             }
             finally
@@ -405,9 +335,9 @@ namespace DockerYoutubeDL.Services
                             {
                                 var result = db.DownloadResult
                                     .Include(x => x.DownloadTask)
-                                    .Single(x => 
-                                        x.DownloadTask.Id == _downloadTaskId && 
-                                        x.VideoIdentifier != null && 
+                                    .Single(x =>
+                                        x.DownloadTask.Id == _downloadTaskId &&
+                                        x.VideoIdentifier != null &&
                                         x.VideoIdentifier.Equals(_currentDownloadVideoIdentifier));
 
                                 Task.Run(async () => await _notification.NotifyClientsAboutDownloadProgressAsync(_downloadTaskId, result.Id, percentageDouble));
@@ -427,9 +357,9 @@ namespace DockerYoutubeDL.Services
                         {
                             var result = db.DownloadResult
                                 .Include(x => x.DownloadTask)
-                                .Single(x => 
-                                    x.DownloadTask.Id == _downloadTaskId && 
-                                    x.VideoIdentifier != null && 
+                                .Single(x =>
+                                    x.DownloadTask.Id == _downloadTaskId &&
+                                    x.VideoIdentifier != null &&
                                     x.VideoIdentifier.Equals(_currentDownloadVideoIdentifier));
 
                             Task.Run(async () => await _notification.NotifyClientsAboutDownloadConversionAsync(_downloadTaskId, result.Id));
@@ -558,30 +488,21 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        public Task HandleDownloadInterrupt(Guid downloadTaskId)
+        public void HandleDownloadInterrupt()
         {
-            if(downloadTaskId == _downloadTaskId)
-            {
-                // Set the flag indicating that the process was killed manually.
-                _wasKilledByInterrupt = true;
+            // Set the flag indicating that the process was killed manually.
+            _wasKilledByInterrupt = true;
 
-                _logger.LogDebug($"Killing conversion processes.");
+            _logger.LogDebug($"Killing conversion processes.");
 
-                // Kill all conversion processes (avconv, ffmpeg) that might block the deletion 
-                // of files.
-                Process.GetProcessesByName("ffmpeg").ToList().ForEach(x => x.Kill());
-                Process.GetProcessesByName("avconv").ToList().ForEach(x => x.Kill());
+            // Kill all conversion processes (avconv, ffmpeg) that might block the deletion 
+            // of files.
+            Process.GetProcessesByName("ffmpeg").ToList().ForEach(x => x.Kill());
+            Process.GetProcessesByName("avconv").ToList().ForEach(x => x.Kill());
 
-                _logger.LogDebug($"Killing main process.");
+            _logger.LogDebug($"Killing main process.");
 
-                _mainDownloadProcess.Kill();
-            }
-            else
-            {
-                _logger.LogError($"Error while handling interrupt request. Received task id {downloadTaskId} does not match the currently active one {_downloadTaskId}");
-            }
-
-            return Task.CompletedTask;
+            _mainDownloadProcess.Kill();
         }
     }
 }

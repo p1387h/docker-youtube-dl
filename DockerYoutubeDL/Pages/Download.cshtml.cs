@@ -68,7 +68,7 @@ namespace DockerYoutubeDL.Pages
         {
             var requestedTask = _context.DownloadTask
                 .Include(x => x.DownloadResult)
-                .Single(x => x.Id == new Guid(taskIdentifier) && !x.WasInterrupted && x.WasDownloaded && x.HadInformationGathered);
+                .Single(x => x.Id == new Guid(taskIdentifier) && x.WasDownloaded);
             var results = requestedTask.DownloadResult
                 .Where(x => x.WasDownloaded && !x.HasError);
             byte[] fileBytes;

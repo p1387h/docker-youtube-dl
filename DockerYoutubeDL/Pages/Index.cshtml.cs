@@ -79,12 +79,6 @@ namespace DockerYoutubeDL.Pages
                 {
                     var retryCount = 8;
 
-                    _logger.LogDebug($"Marking task as interrupted.");
-
-                    // Only mark the entries as interrupted. Don't delete any files or remove entries 
-                    // from the db yet to prevent errors in the background tasks.
-                    await this.MarkTaskAsInterruptedAsync(removeTaskId);
-
                     _logger.LogDebug($"Forwarding interrupt.");
 
                     // Remove any traces from hangfire.
@@ -117,8 +111,7 @@ namespace DockerYoutubeDL.Pages
                     DateAdded = DateTime.Now,
                     AudioFormat = downloadInfo.AudioFormat,
                     VideoFormat = downloadInfo.VideoFormat,
-                    VideoQuality = downloadInfo.VideoQuality,
-                    HadInformationGathered = false
+                    VideoQuality = downloadInfo.VideoQuality
                 };
 
                 await _context.DownloadTask.AddAsync(downloadTask);
@@ -170,19 +163,6 @@ namespace DockerYoutubeDL.Pages
                 this.SelectedAudioFormat = downloadInfo.AudioFormat;
                 this.SelectedVideoFormat = VideoFormat.None;
                 this.SelectedVideoQuality = downloadInfo.VideoQuality;
-            }
-        }
-
-        private async Task MarkTaskAsInterruptedAsync(Guid downloadTaskId)
-        {
-            var downloadTask = await _context.DownloadTask.FindAsync(downloadTaskId);
-
-            // Prevent Exceptions.
-            if (downloadTask != null)
-            {
-                downloadTask.WasInterrupted = true;
-
-                await _context.SaveChangesAsync();
             }
         }
 

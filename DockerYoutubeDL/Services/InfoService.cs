@@ -54,18 +54,12 @@ namespace DockerYoutubeDL.Services
             _notification = notification;
         }
 
-
-
-
-
-
-
         public async Task ExecuteAsync(IJobCancellationToken token, Guid downloadTaskIdentifier)
         {
             _logger.LogDebug($"InfoService started for: {downloadTaskIdentifier}");
 
             _downloadTaskId = downloadTaskIdentifier;
-            
+
             var infoProcessInfo = await this.GenerateInfoProcessStartInfoAsync();
             var infoProcessTask = this.InfoDownloadProcessAsync(infoProcessInfo);
             var desiredState = new HashSet<TaskStatus>()
@@ -89,25 +83,12 @@ namespace DockerYoutubeDL.Services
             }
             catch (OperationCanceledException)
             {
-                await this.HandleDownloadInterrupt(_downloadTaskId);
+                this.HandleDownloadInterrupt();
                 _logger.LogInformation("Running Hangfire background job stopped: Info");
             }
 
             await infoProcessTask;
         }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
         private async Task<ProcessStartInfo> GenerateInfoProcessStartInfoAsync()
         {
@@ -172,10 +153,7 @@ namespace DockerYoutubeDL.Services
                 _logger.LogError(e, "Info download process threw an exception:");
 
                 _resetEvent.Set();
-
-                // Prevent infinite loops.
                 this.MarkDownloadTaskAsDownloaderError(_downloadTaskId);
-
                 await _notification.NotifyClientsAboutDownloaderError(_downloadTaskId);
             }
             finally
@@ -209,9 +187,6 @@ namespace DockerYoutubeDL.Services
 
                     db.SaveChanges();
                 }
-
-                // Task must be marked in order for the download task to pick it up.
-                this.MarkDownloadTaskAsGathered(_downloadTaskId);
             }
 
             _resetEvent.Set();
@@ -323,24 +298,6 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        private void MarkDownloadTaskAsGathered(Guid downloadTaskId)
-        {
-            try
-            {
-                using (var db = _factory.CreateDbContext(new string[0]))
-                {
-                    var downloadTask = db.DownloadTask.Find(downloadTaskId);
-                    downloadTask.HadInformationGathered = true;
-
-                    db.SaveChanges();
-                }
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, $"Error while marking {downloadTaskId} as gathered.");
-            }
-        }
-
         private void MarkDownloadTaskAsDownloaderError(Guid downloadTaskId)
         {
             try
@@ -359,23 +316,14 @@ namespace DockerYoutubeDL.Services
             }
         }
 
-        public Task HandleDownloadInterrupt(Guid downloadTaskId)
+        public void HandleDownloadInterrupt()
         {
-            if (downloadTaskId == _downloadTaskId)
-            {
-                // Set the flag indicating that the process was killed manually.
-                _wasKilledByInterrupt = true;
+            // Set the flag indicating that the process was killed manually.
+            _wasKilledByInterrupt = true;
 
-                _logger.LogDebug($"Killing info process.");
+            _logger.LogDebug($"Killing info process.");
 
-                _infoDownloadProcess.Kill();
-            }
-            else
-            {
-                _logger.LogError($"Error while handling interrupt request. Received task id {downloadTaskId} does not match the currently active one {_downloadTaskId}");
-            }
-
-            return Task.CompletedTask;
+            _infoDownloadProcess.Kill();
         }
     }
 }
