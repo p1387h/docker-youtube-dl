@@ -1,5 +1,6 @@
 ﻿using DockerYoutubeDL.DAL;
 using DockerYoutubeDL.Models;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
@@ -16,10 +17,9 @@ using System.Threading.Tasks;
 
 namespace DockerYoutubeDL.Services
 {
-    public class InfoBackgroundService : BackgroundService
+    public class InfoService
     {
-        // Factory is used since the service is instantiated once as singleton and therefor 
-        // outlives the "normal" session lifetime of the dbcontext.
+        // Factory is used since the service modifies multiple different instances.
         private IDesignTimeDbContextFactory<DownloadContext> _factory;
         private ILogger _logger;
         private IConfiguration _config;
@@ -30,13 +30,13 @@ namespace DockerYoutubeDL.Services
         private int _currentIndex;
         private AutoResetEvent _resetEvent;
 
-        private Guid _currentDownloadTaskId = new Guid();
+        private Guid _downloadTaskId = new Guid();
         private Process _infoDownloadProcess = null;
         private bool _wasKilledByInterrupt = false;
 
-        public InfoBackgroundService(
+        public InfoService(
             IDesignTimeDbContextFactory<DownloadContext> factory,
-            ILogger<DownloadBackgroundService> logger,
+            ILogger<DownloadService> logger,
             IConfiguration config,
             DownloadPathGenerator pathGenerator,
             NotificationService notification)
@@ -54,64 +54,67 @@ namespace DockerYoutubeDL.Services
             _notification = notification;
         }
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+
+
+
+
+
+
+        public async Task ExecuteAsync(IJobCancellationToken token, Guid downloadTaskIdentifier)
         {
-            _logger.LogDebug("InfoBackgroundService started.");
+            _logger.LogDebug($"InfoService started for: {downloadTaskIdentifier}");
 
-            while (!stoppingToken.IsCancellationRequested)
+            _downloadTaskId = downloadTaskIdentifier;
+            
+            var infoProcessInfo = await this.GenerateInfoProcessStartInfoAsync();
+            var infoProcessTask = this.InfoDownloadProcessAsync(infoProcessInfo);
+            var desiredState = new HashSet<TaskStatus>()
+                {
+                    TaskStatus.Canceled,
+                    TaskStatus.Faulted,
+                    TaskStatus.RanToCompletion
+                };
+            var running = true;
+
+            try
             {
-                var hasDownloaded = false;
-
-                // Find the next download Target.
-                using (var db = _factory.CreateDbContext(new string[0]))
+                // Keep an eye on the cancellation token in order to remove any tasks that are 
+                // removed by the user until the task finishes.
+                while (running)
                 {
-                    Func<DownloadTask, bool> selector = new Func<DownloadTask, bool>(x =>
-                        !x.HadInformationGathered &&
-                        !x.WasInterrupted &&
-                        !x.HadDownloaderError);
-                    var now = DateTime.Now;
-
-                    _logger.LogDebug("Checking for task that requires information gathering...");
-
-                    if (db.DownloadTask.Any(selector))
-                    {
-                        // Next task is the one that was queued earliest and was not yet downloaded. 
-                        var nextTask = db.DownloadTask
-                            .Where(selector)
-                            .Select(x => new Tuple<DownloadTask, TimeSpan>(x, now.Subtract(x.DateAdded)))
-                            .OrderByDescending(x => x.Item2)
-                            .FirstOrDefault()
-                            .Item1;
-
-                        _logger.LogDebug($"Next download: Url={nextTask.Url}, Id={nextTask.Id}");
-
-                        // Gather all necessary information.
-                        _currentDownloadTaskId = nextTask.Id;
-                        var infoProcessInfo = await this.GenerateInfoProcessStartInfoAsync();
-                        await this.InfoDownloadProcessAsync(infoProcessInfo);
-
-                        // Reset any set flag.
-                        _wasKilledByInterrupt = false;
-
-                        // Allow for downloads to directly follow one another.
-                        hasDownloaded = true;
-                    }
-                }
-
-                // Don't wait inbetween downloads if more are queued.
-                if (!hasDownloaded)
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(_config.GetValue<int>("InfoCheckIntervalSeconds")), stoppingToken);
+                    token.ThrowIfCancellationRequested();
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                    running = !desiredState.Contains(infoProcessTask.Status);
                 }
             }
+            catch (OperationCanceledException)
+            {
+                await this.HandleDownloadInterrupt(_downloadTaskId);
+                _logger.LogInformation("Running Hangfire background job stopped: Info");
+            }
+
+            await infoProcessTask;
         }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         private async Task<ProcessStartInfo> GenerateInfoProcessStartInfoAsync()
         {
             using (var db = _factory.CreateDbContext(new string[0]))
             {
                 var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                var downloadTask = await db.DownloadTask.FindAsync(_currentDownloadTaskId);
+                var downloadTask = await db.DownloadTask.FindAsync(_downloadTaskId);
 
                 _logger.LogDebug($"Generating info ProcessStartInformation for {downloadTask.Url}");
 
@@ -171,14 +174,14 @@ namespace DockerYoutubeDL.Services
                 _resetEvent.Set();
 
                 // Prevent infinite loops.
-                this.MarkDownloadTaskAsDownloaderError(_currentDownloadTaskId);
+                this.MarkDownloadTaskAsDownloaderError(_downloadTaskId);
 
-                await _notification.NotifyClientsAboutDownloaderError(_currentDownloadTaskId);
+                await _notification.NotifyClientsAboutDownloaderError(_downloadTaskId);
             }
             finally
             {
                 // Prevents null pointer exceptions when killing the process.
-                _currentDownloadTaskId = new Guid();
+                _downloadTaskId = new Guid();
 
                 // Remove all handlers etc. to prevent memory leaks.
                 _infoDownloadProcess.Exited -= this.HandleExited;
@@ -200,7 +203,7 @@ namespace DockerYoutubeDL.Services
                 {
                     var downloadResults = db.DownloadResult
                         .Include(x => x.DownloadTask)
-                        .Where(x => x.DownloadTask.Id == _currentDownloadTaskId)
+                        .Where(x => x.DownloadTask.Id == _downloadTaskId)
                         .ToList();
                     downloadResults.ForEach(x => x.IsPartOfPlaylist = downloadResults.Count > 1);
 
@@ -208,7 +211,7 @@ namespace DockerYoutubeDL.Services
                 }
 
                 // Task must be marked in order for the download task to pick it up.
-                this.MarkDownloadTaskAsGathered(_currentDownloadTaskId);
+                this.MarkDownloadTaskAsGathered(_downloadTaskId);
             }
 
             _resetEvent.Set();
@@ -235,14 +238,14 @@ namespace DockerYoutubeDL.Services
                             // An error means a video is unavailable and can not be downloaded.
                             var result = new DownloadResult()
                             {
-                                DownloadTask = db.DownloadTask.Find(_currentDownloadTaskId),
+                                DownloadTask = db.DownloadTask.Find(_downloadTaskId),
                                 Index = _currentIndex,
                                 HasError = true,
                                 Message = message
                             };
 
                             db.DownloadResult.Add(result);
-                            db.DownloadTask.Find(_currentDownloadTaskId).DownloadResult.Add(result);
+                            db.DownloadTask.Find(_downloadTaskId).DownloadResult.Add(result);
                             db.SaveChanges();
 
                             _logger.LogDebug($"Error Info received and added to db: Index={result.Index}, Message={result.Message}");
@@ -283,7 +286,7 @@ namespace DockerYoutubeDL.Services
                         // An error means a video is unavailable and can not be downloaded.
                         var result = new DownloadResult()
                         {
-                            DownloadTask = db.DownloadTask.Find(_currentDownloadTaskId),
+                            DownloadTask = db.DownloadTask.Find(_downloadTaskId),
                             Url = template.webpage_url,
                             Name = template.title,
                             VideoIdentifier = template.id,
@@ -293,7 +296,7 @@ namespace DockerYoutubeDL.Services
                         };
 
                         db.DownloadResult.Add(result);
-                        db.DownloadTask.Find(_currentDownloadTaskId).DownloadResult.Add(db.DownloadResult.Find(result.Id));
+                        db.DownloadTask.Find(_downloadTaskId).DownloadResult.Add(db.DownloadResult.Find(result.Id));
                         db.SaveChanges();
 
                         // Notify the client about the info. Only do this AFTER the db saved the index of the result!
@@ -358,7 +361,7 @@ namespace DockerYoutubeDL.Services
 
         public Task HandleDownloadInterrupt(Guid downloadTaskId)
         {
-            if (downloadTaskId == _currentDownloadTaskId)
+            if (downloadTaskId == _downloadTaskId)
             {
                 // Set the flag indicating that the process was killed manually.
                 _wasKilledByInterrupt = true;
@@ -369,7 +372,7 @@ namespace DockerYoutubeDL.Services
             }
             else
             {
-                _logger.LogError($"Error while handling interrupt request. Received task id {downloadTaskId} does not match the currently active one {_currentDownloadTaskId}");
+                _logger.LogError($"Error while handling interrupt request. Received task id {downloadTaskId} does not match the currently active one {_downloadTaskId}");
             }
 
             return Task.CompletedTask;

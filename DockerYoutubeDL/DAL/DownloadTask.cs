@@ -24,9 +24,13 @@ namespace DockerYoutubeDL.DAL
 
         public ICollection<DownloadResult> DownloadResult { get; set; }
 
+        // Reference to scheduled background jobs.
+        public ICollection<HangfireInformation> HangfireInformation { get; set; }
+
         public DownloadTask()
         {
             this.DownloadResult = new Collection<DownloadResult>();
+            this.HangfireInformation = new Collection<HangfireInformation>();
         }
     }
 }

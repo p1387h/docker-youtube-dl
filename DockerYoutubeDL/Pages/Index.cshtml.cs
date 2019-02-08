@@ -32,29 +32,26 @@ namespace DockerYoutubeDL.Pages
 
         private DownloadContext _context;
         private ILogger _logger;
-        private DownloadBackgroundService _downloadService;
-        private InfoBackgroundService _infoService;
+        private HangfireExecutionService _hangfireService;
         private NotificationService _notification;
         private DownloadPathGenerator _pathGenerator;
 
         public IndexModel(
             DownloadContext context,
             ILogger<IndexModel> logger,
-            DownloadBackgroundService downloadService,
-            InfoBackgroundService infoService,
+            HangfireExecutionService hangfireService,
             NotificationService notification,
             DownloadPathGenerator pathGenerator)
         {
-            if (context == null || logger == null || downloadService == null ||
-                infoService == null || notification == null || pathGenerator == null)
+            if (context == null || logger == null || hangfireService == null || 
+                notification == null || pathGenerator == null)
             {
                 throw new ArgumentException();
             }
 
             _context = context;
             _logger = logger;
-            _downloadService = downloadService;
-            _infoService = infoService;
+            _hangfireService = hangfireService;
             _notification = notification;
             _pathGenerator = pathGenerator;
         }
@@ -90,8 +87,8 @@ namespace DockerYoutubeDL.Pages
 
                     _logger.LogDebug($"Forwarding interrupt.");
 
-                    await _infoService.HandleDownloadInterrupt(removeTaskId);
-                    await _downloadService.HandleDownloadInterrupt(removeTaskId);
+                    // Remove any traces from hangfire.
+                    await _hangfireService.StopAndRemoveBackgroundJob(removeTaskId);
 
                     // Db cleanup.
                     await this.RemoveDbEntriesAsync(removeTaskId);
@@ -126,6 +123,9 @@ namespace DockerYoutubeDL.Pages
 
                 await _context.DownloadTask.AddAsync(downloadTask);
                 await _context.SaveChangesAsync();
+
+                // Forward info to hangfire.
+                await _hangfireService.QueueBackgroundJob(downloadTask.Id);
 
                 _logger.LogInformation($"New DownloadTask added to the db: Url={downloadTask.Url}, Id={downloadTask.Id}");
 

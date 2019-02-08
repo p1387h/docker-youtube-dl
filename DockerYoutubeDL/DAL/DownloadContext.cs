@@ -9,6 +9,7 @@ namespace DockerYoutubeDL.DAL
 {
     public class DownloadContext : DbContext
     {
+        public DbSet<HangfireInformation> HangfireInformation { get; set; }
         public DbSet<DownloadTask> DownloadTask { get; set; }
         public DbSet<DownloadResult> DownloadResult { get; set; }
 
@@ -22,6 +23,16 @@ namespace DockerYoutubeDL.DAL
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            // Configuration of the HangfireInformation table.
+            modelBuilder.Entity<HangfireInformation>()
+                .HasKey(x => x.Id);
+            modelBuilder.Entity<HangfireInformation>()
+                .Property(x => x.Id)
+                .IsRequired();
+            modelBuilder.Entity<HangfireInformation>()
+                .Property(x => x.HangfireExecutionType)
+                .IsRequired();
+
             // Configuration of the DownloadTask table.
             modelBuilder.Entity<DownloadTask>()
                 .HasKey(x => x.Id);
@@ -38,6 +49,11 @@ namespace DockerYoutubeDL.DAL
                 .HasMany<DownloadResult>(x => x.DownloadResult)
                 .WithOne(x => x.DownloadTask)
                 .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<DownloadTask>()
+                .HasMany<HangfireInformation>(x => x.HangfireInformation)
+                .WithOne(x => x.DownloadTask)
+                .OnDelete(DeleteBehavior.Cascade)
+                .IsRequired();
 
             // Configuration of the DownloadResult table.
             modelBuilder.Entity<DownloadResult>()

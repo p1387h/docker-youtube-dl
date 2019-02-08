@@ -15,6 +15,8 @@ using DockerYoutubeDL.SignalR;
 using DockerYoutubeDL.Services;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Storage;
+using Hangfire;
+using Hangfire.MemoryStorage;
 
 namespace DockerYoutubeDL
 {
@@ -42,21 +44,19 @@ namespace DockerYoutubeDL
             services.AddSingleton<IDesignTimeDbContextFactory<DownloadContext>, DownloadContextFactory>();
 
             // Component for generating the paths of the download folders:
-            services.AddSingleton<DownloadPathGenerator>();
+            services.AddTransient<DownloadPathGenerator>();
 
             // Component for notifying the clients:
-            services.AddSingleton<NotificationService>();
+            services.AddTransient<NotificationService>();
 
             // SignalR components:
             services.AddSignalR();
 
-            // Information background service:
-            services.AddSingleton<InfoBackgroundService>();
-            services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, InfoBackgroundService>((provider) => provider.CreateScope().ServiceProvider.GetRequiredService<InfoBackgroundService>());
-
-            // Download background service:
-            services.AddSingleton<DownloadBackgroundService>();
-            services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, DownloadBackgroundService>((provider) => provider.CreateScope().ServiceProvider.GetRequiredService<DownloadBackgroundService>());
+            // Hangfire:
+            services.AddTransient<InfoService>();
+            services.AddTransient<DownloadService>();
+            services.AddTransient<HangfireExecutionService>();
+            services.AddHangfire(x => x.UseMemoryStorage());
 
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
         }
@@ -73,8 +73,13 @@ namespace DockerYoutubeDL
             // localhost/API => localhost/customBasePath/API
             app.UsePathBase(this.Configuration.GetValue<string>("BasePath"));
 
+            app.UseHangfireServer(new BackgroundJobServerOptions()
+            {
+                // Allow only a single download to be active at once.
+                WorkerCount = 1
+            });
+            app.UseHangfireDashboard();
             app.UseStaticFiles();
-            app.UseAuthentication();
 
             app.UseSignalR(options => options.MapHub<UpdateHub>("/ws"));
             app.UseMvc();
