@@ -43,7 +43,7 @@ namespace DockerYoutubeDL.Services
 
             // The same policy is used for all notification attempts.
             _notificationPolicy = Policy.Handle<Exception>()
-                .WaitAndRetryAsync(5, (count) => TimeSpan.FromSeconds(count + 1), (e, retryCount, context) =>
+                .WaitAndRetryAsync(2, (count) => TimeSpan.FromSeconds(count + 1), (e, retryCount, context) =>
                 {
                     _logger.LogError(e, "Retry error: " + context["errorMessage"] as string);
                 });
