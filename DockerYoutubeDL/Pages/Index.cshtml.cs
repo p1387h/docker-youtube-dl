@@ -73,31 +73,45 @@ namespace DockerYoutubeDL.Pages
         {
             if (ModelState.IsValid)
             {
-                var storedTask = await _context.DownloadTask.FindAsync(removeTaskId);
-
-                if (storedTask != null)
+                await this.DeleteTask(removeTaskId);
+            }
+            // Invalid ModelState means, that no task id was provided. Therefor all 
+            // download tasks must be deleted.
+            else
+            {
+                foreach (var id in _context.DownloadTask.Select(x => x.Id))
                 {
-                    var retryCount = 8;
-
-                    _logger.LogDebug($"Forwarding interrupt.");
-
-                    // Remove any traces from hangfire.
-                    await _hangfireService.StopAndRemoveBackgroundJob(removeTaskId);
-
-                    // Db cleanup.
-                    await this.RemoveDbEntriesAsync(removeTaskId);
-
-                    // Notify all clients.
-                    await _notification.NotifyClientsAboutInterruptedDownloadAsync(removeTaskId);
-
-                    // After killing all processes etc. remove the directory. Started in own task 
-                    // since polly is used for removing the files, which could lead to timeouts.
-#pragma warning disable CS4014
-                    Task.Run(async () => await this.DeleteDownloadFilesAsync(removeTaskId, retryCount));
+                    await this.DeleteTask(id);
                 }
             }
 
             this.LoadDownloadTasks();
+        }
+
+        private async Task DeleteTask(Guid downloadTaskId)
+        {
+            var storedTask = await _context.DownloadTask.FindAsync(downloadTaskId);
+
+            if (storedTask != null)
+            {
+                var retryCount = 8;
+
+                _logger.LogDebug($"Forwarding interrupt.");
+
+                // Remove any traces from hangfire.
+                await _hangfireService.StopAndRemoveBackgroundJob(downloadTaskId);
+
+                // Db cleanup.
+                await this.RemoveDbEntriesAsync(downloadTaskId);
+
+                // Notify all clients.
+                await _notification.NotifyClientsAboutInterruptedDownloadAsync(downloadTaskId);
+
+                // After killing all processes etc. remove the directory. Started in own task 
+                // since polly is used for removing the files, which could lead to timeouts.
+#pragma warning disable CS4014
+                Task.Run(async () => await this.DeleteDownloadFilesAsync(downloadTaskId, retryCount));
+            }
         }
 
         public async Task OnPostNewTask([FromForm] DownloadInfoModel downloadInfo)

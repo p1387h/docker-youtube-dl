@@ -104,6 +104,10 @@ body {
     margin-left: 10px;
 }
 
+#refreshButton {
+    margin-left: 10px;
+}
+
 <!-- Taken from: https://bootsnipp.com/snippets/ZkMKE -->
 .radio {
     padding-left: 20px;
