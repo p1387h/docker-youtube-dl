@@ -34,34 +34,74 @@ namespace DockerYoutubeDL.Pages
         public async Task<ActionResult> OnGet([FromQuery] string taskIdentifier, [FromQuery] string taskResultIdentifier)
         {
             ActionResult result;
-            
-            if (string.IsNullOrEmpty(taskIdentifier))
+
+            try
             {
-                result = BadRequest();
+                // Whole playlist.
+                if (string.IsNullOrEmpty(taskResultIdentifier) && !string.IsNullOrEmpty(taskIdentifier))
+                {
+                    result = await this.DownloadWholePlaylist(taskIdentifier);
+                }
+                // Single entry.
+                else if (!string.IsNullOrEmpty(taskResultIdentifier) && string.IsNullOrEmpty(taskIdentifier))
+                {
+                    result = await this.DownloadSingleEntry(taskResultIdentifier);
+                }
+                // All download tasks.
+                else
+                {
+                    result = await this.DownloadAllDownloadTasks();
+                }
             }
-            else
+            catch (Exception e)
             {
-                try
-                {
-                    // Whole playlist.
-                    if(string.IsNullOrEmpty(taskResultIdentifier))
-                    {
-                        result = await this.DownloadWholePlaylist(taskIdentifier);
-                    }
-                    // Single entry.
-                    else
-                    {
-                        result = await this.DownloadSingleEntry(taskResultIdentifier);
-                    }
-                }
-                catch (Exception e)
-                {
-                    _logger.LogError(e, "Error while requesting a file:");
-                    result = BadRequest();
-                }
+                _logger.LogError(e, "Error while requesting a file:");
+                result = BadRequest();
             }
 
             return result;
+        }
+
+        private async Task<ActionResult> DownloadAllDownloadTasks()
+        {
+            var downloadTasks = _context.DownloadTask
+                   .Include(x => x.DownloadResult)
+                   .Where(x => x.WasDownloaded);
+            byte[] fileBytes;
+
+            // Create new zip file with all the downloaded results inside it.
+            using (var archiveMs = new MemoryStream())
+            {
+                using (var archive = new ZipArchive(archiveMs, ZipArchiveMode.Create, true))
+                {
+                    foreach (var task in downloadTasks)
+                    {
+                        foreach (var result in task.DownloadResult.Where(x => x.WasDownloaded && !x.HasError))
+                        {
+                            var fileName = result.Name + Path.GetExtension(result.PathToFile);
+
+                            // Playlist indices must be added infront of files.
+                            if (result.IsPartOfPlaylist)
+                            {
+                                fileName = this.PadFileName(result, fileName);
+                            }
+
+                            var entry = archive.CreateEntry($"{task.Id}/{fileName}");
+
+                            using (var fileStream = System.IO.File.OpenRead(result.PathToFile))
+                            {
+                                using (var entryStream = entry.Open())
+                                {
+                                    await fileStream.CopyToAsync(entryStream);
+                                }
+                            }
+                        }
+                    }
+                }
+                fileBytes = archiveMs.ToArray();
+            }
+
+            return File(fileBytes, System.Net.Mime.MediaTypeNames.Application.Zip, "files.zip");
         }
 
         private async Task<ActionResult> DownloadWholePlaylist(string taskIdentifier)

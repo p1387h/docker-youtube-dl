@@ -94,6 +94,18 @@
     <div class="fileHeader">
         <h2>Files</h2>
         <div class="fileHeader">
+            <a href="./download" class="btn btn-primary" style="color:white">Download as .zip</a>
+
+            <form action="." method="get">
+                @Html.HiddenFor(x => x.SelectedAudioFormat)
+                @Html.HiddenFor(x => x.SelectedVideoFormat)
+                @Html.HiddenFor(x => x.SelectedVideoQuality)
+
+                <button type="submit" class="btn btn-default pull-right" id="refreshButton">
+                    <span class="glyphicon glyphicon-refresh"></span>
+                </button>
+            </form>
+
             <form method="post" action=".?handler=deleteTask">
                 @Html.AntiForgeryToken()
 
@@ -103,16 +115,6 @@
 
                 <button type="submit" class="btn btn-danger pull-right downloadDeleteButton" name="RemoveTaskId" value="">
                     <span class="glyphicon glyphicon-trash"></span>
-                </button>
-            </form>
-
-            <form action="." method="get">
-                @Html.HiddenFor(x => x.SelectedAudioFormat)
-                @Html.HiddenFor(x => x.SelectedVideoFormat)
-                @Html.HiddenFor(x => x.SelectedVideoQuality)
-
-                <button type="submit" class="btn btn-default pull-right" id="refreshButton">
-                    <span class="glyphicon glyphicon-refresh"></span>
                 </button>
             </form>
         </div>
