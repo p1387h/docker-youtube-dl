@@ -78,7 +78,6 @@ namespace DockerYoutubeDL
                 // Allow only a single download to be active at once.
                 WorkerCount = 1
             });
-            app.UseHangfireDashboard();
             app.UseStaticFiles();
 
             app.UseSignalR(options => options.MapHub<UpdateHub>("/ws"));
