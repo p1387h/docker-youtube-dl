@@ -298,20 +298,23 @@ namespace DockerYoutubeDL.Services
                             // Index must be used since a failed result does NOT yet contain the video identifier!
                             var result = db.DownloadResult
                                 .Include(x => x.DownloadTask)
-                                .Single(x => x.DownloadTask.Id == _downloadTaskId && x.Index == _currentIndex);
+                                .FirstOrDefault(x => x.DownloadTask.Id == _downloadTaskId && x.Index == _currentIndex);
 
-                            if (string.IsNullOrEmpty(result.VideoIdentifier))
+                            if(result != null)
                             {
-                                result.VideoIdentifier = _currentDownloadVideoIdentifier;
-                            }
+                                if (string.IsNullOrEmpty(result.VideoIdentifier))
+                                {
+                                    result.VideoIdentifier = _currentDownloadVideoIdentifier;
+                                }
 
-                            // Skip notifications for unavailable videos.
-                            if (!result.HasError)
-                            {
-                                Task.Run(async () => await _notification.NotifyClientsAboutStartedDownloadAsync(_downloadTaskId, result.Id));
-                            }
+                                // Skip notifications for unavailable videos.
+                                if (!result.HasError)
+                                {
+                                    Task.Run(async () => await _notification.NotifyClientsAboutStartedDownloadAsync(_downloadTaskId, result.Id));
+                                }
 
-                            db.SaveChanges();
+                                db.SaveChanges();
+                            }
                         }
                         catch (Exception exception)
                         {
@@ -335,12 +338,15 @@ namespace DockerYoutubeDL.Services
                             {
                                 var result = db.DownloadResult
                                     .Include(x => x.DownloadTask)
-                                    .Single(x =>
+                                    .FirstOrDefault(x =>
                                         x.DownloadTask.Id == _downloadTaskId &&
                                         x.VideoIdentifier != null &&
                                         x.VideoIdentifier.Equals(_currentDownloadVideoIdentifier));
 
-                                Task.Run(async () => await _notification.NotifyClientsAboutDownloadProgressAsync(_downloadTaskId, result.Id, percentageDouble));
+                                if(result != null)
+                                {
+                                    Task.Run(async () => await _notification.NotifyClientsAboutDownloadProgressAsync(_downloadTaskId, result.Id, percentageDouble));
+                                }
                             }
                             catch (Exception exception)
                             {
@@ -357,12 +363,15 @@ namespace DockerYoutubeDL.Services
                         {
                             var result = db.DownloadResult
                                 .Include(x => x.DownloadTask)
-                                .Single(x =>
+                                .FirstOrDefault(x =>
                                     x.DownloadTask.Id == _downloadTaskId &&
                                     x.VideoIdentifier != null &&
                                     x.VideoIdentifier.Equals(_currentDownloadVideoIdentifier));
 
-                            Task.Run(async () => await _notification.NotifyClientsAboutDownloadConversionAsync(_downloadTaskId, result.Id));
+                            if(result != null)
+                            {
+                                Task.Run(async () => await _notification.NotifyClientsAboutDownloadConversionAsync(_downloadTaskId, result.Id));
+                            }
                         }
                         catch (Exception exception)
                         {
@@ -381,22 +390,26 @@ namespace DockerYoutubeDL.Services
                 {
                     var downloadResult = db.DownloadResult
                         .Include(x => x.DownloadTask)
-                        .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(videoIdentifier));
-                    var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadResult.DownloadTask.Id);
-
-                    // Find the downloaded file. Only possible if no error occurred.
-                    if (!downloadResult.HasError && Directory.Exists(downloadFolder))
+                        .FirstOrDefault(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(videoIdentifier));
+                    
+                    if(downloadResult != null)
                     {
-                        foreach (string filePath in Directory.GetFiles(downloadFolder))
-                        {
-                            var fileVideoIdentifier = Path.GetFileNameWithoutExtension(filePath).Split(_pathGenerator.NameDilimiter)[0];
+                        var downloadFolder = _pathGenerator.GenerateDownloadFolderPath(downloadResult.DownloadTask.Id);
 
-                            if (fileVideoIdentifier.Equals(downloadResult.VideoIdentifier))
+                        // Find the downloaded file. Only possible if no error occurred.
+                        if (!downloadResult.HasError && Directory.Exists(downloadFolder))
+                        {
+                            foreach (string filePath in Directory.GetFiles(downloadFolder))
                             {
-                                // Set the file path in order to retrieve the file later on.
-                                downloadResult.PathToFile = filePath;
-                                db.SaveChanges();
-                                break;
+                                var fileVideoIdentifier = Path.GetFileNameWithoutExtension(filePath).Split(_pathGenerator.NameDilimiter)[0];
+
+                                if (fileVideoIdentifier.Equals(downloadResult.VideoIdentifier))
+                                {
+                                    // Set the file path in order to retrieve the file later on.
+                                    downloadResult.PathToFile = filePath;
+                                    db.SaveChanges();
+                                    break;
+                                }
                             }
                         }
                     }
@@ -417,12 +430,16 @@ namespace DockerYoutubeDL.Services
                 {
                     var result = db.DownloadResult
                         .Include(x => x.DownloadTask)
-                        .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(videoIdentifier));
-                    var sendNotification = !result.HasError;
-
-                    if (sendNotification)
+                        .FirstOrDefault(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(videoIdentifier));
+                    
+                    if(result != null)
                     {
-                        Task.Run(async () => await _notification.NotifyClientsAboutFinishedDownloadResultAsync(downloadTaskId, result.Id));
+                        var sendNotification = !result.HasError;
+
+                        if (sendNotification)
+                        {
+                            Task.Run(async () => await _notification.NotifyClientsAboutFinishedDownloadResultAsync(downloadTaskId, result.Id));
+                        }
                     }
                 }
                 catch (Exception e)
@@ -440,10 +457,14 @@ namespace DockerYoutubeDL.Services
                 {
                     var downloadResult = db.DownloadResult
                         .Include(x => x.DownloadTask)
-                        .Single(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(videoIdentifier));
-                    downloadResult.WasDownloaded = true;
+                        .FirstOrDefault(x => x.DownloadTask.Id == downloadTaskId && x.VideoIdentifier != null && x.VideoIdentifier.Equals(videoIdentifier));
+                    
+                    if(downloadResult != null)
+                    {
+                        downloadResult.WasDownloaded = true;
 
-                    db.SaveChanges();
+                        db.SaveChanges();
+                    }
                 }
                 catch (Exception e)
                 {
