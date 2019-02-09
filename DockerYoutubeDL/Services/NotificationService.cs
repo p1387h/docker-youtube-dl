@@ -15,7 +15,7 @@ namespace DockerYoutubeDL.Services
 {
     public class NotificationService
     {
-        // Factory is used since the service is instantiated once as singleton and therefor 
+        // Factory is used since the service is instantiated once as singleton and therefore 
         // outlives the "normal" session lifetime of the dbcontext.
         private IDesignTimeDbContextFactory<DownloadContext> _factory;
         private ILogger _logger;

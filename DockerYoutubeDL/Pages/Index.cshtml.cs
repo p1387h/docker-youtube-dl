@@ -75,7 +75,7 @@ namespace DockerYoutubeDL.Pages
             {
                 await this.DeleteTask(removeTaskId);
             }
-            // Invalid ModelState means, that no task id was provided. Therefor all 
+            // Invalid ModelState means, that no task id was provided. Therefore all 
             // download tasks must be deleted.
             else
             {
@@ -217,7 +217,7 @@ namespace DockerYoutubeDL.Pages
                 {
                     _logger.LogDebug($"Trying to remove the directory of task {downloadTaskId}.");
 
-                    // IOExceptions are not correctly handled by Polly. Therefor the result is used.
+                    // IOExceptions are not correctly handled by Polly. Therefore the result is used.
                     try
                     {
                         var folderPath = _pathGenerator.GenerateDownloadFolderPath(downloadTaskId);

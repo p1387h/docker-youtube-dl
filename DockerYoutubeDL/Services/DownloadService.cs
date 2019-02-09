@@ -247,7 +247,7 @@ namespace DockerYoutubeDL.Services
         private void HandleError(object sender, DataReceivedEventArgs e)
         {
             // Only log the error, since this output includes the error and warning messages of 
-            // youtube-dl which are handled in the info gathering process. Therefor sending a
+            // youtube-dl which are handled in the info gathering process. Therefore sending a
             // downloader error to the user is not advised.
             if (e.Data != null)
             {
@@ -288,7 +288,7 @@ namespace DockerYoutubeDL.Services
                     _currentDownloadVideoIdentifier = matchVideoWebPage.Groups["videoIdentifier"].Value;
 
                     // --dump-json in the info process is unable to extract the video identifier for a 
-                    // unavailable video. Therefor this must be inserted here.
+                    // unavailable video. Therefore this must be inserted here.
                     // NOTE:
                     // The identifier stays null UNTIL the download action for the result itself if performed!
                     using (var db = _factory.CreateDbContext(new string[0]))
