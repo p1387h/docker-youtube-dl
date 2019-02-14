@@ -43,7 +43,7 @@ namespace DockerYoutubeDL.Pages
                     result = await this.DownloadWholePlaylist(taskIdentifier);
                 }
                 // Single entry.
-                else if (!string.IsNullOrEmpty(taskResultIdentifier) && string.IsNullOrEmpty(taskIdentifier))
+                else if (!string.IsNullOrEmpty(taskResultIdentifier) && !string.IsNullOrEmpty(taskIdentifier))
                 {
                     result = await this.DownloadSingleEntry(taskResultIdentifier);
                 }
