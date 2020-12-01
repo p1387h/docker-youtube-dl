@@ -6,7 +6,7 @@ Creator: P H, ph1387@t-online.de
 
 ## Overview
 <p align="center">
-  <img width="1000" height="418" src="https://github.com/p1387h/docker-youtube-dl/blob/master/youtubedl.gif">
+  <img width="1000" height="418" src="https://github.com/ph1387/docker-youtube-dl/blob/master/youtubedl.gif">
 </p>
 
 The application is based on the [youtube-dl](https://github.com/rg3/youtube-dl) command line tool in such a way that it encapculates the main functionality of downloading video and audio files from (mostly) youtube and converting them into the desired format. The provided interface is therefore only presenting the most essential features like choosing format and the option (for videos) to download video and audio files separately and merging them together. By default the application is always downloading the **best** video format possible which means the best single file combination of video and audio that the tool can find. The user can toggle between this behaviour and merging the best tracks together. The latter one will considerably increase the time for each download and require a lot of CPU power. Audio files such as mp3 and wav are not affected by this and are always downloaded in the best format and are then converted into the desired one.
@@ -64,4 +64,4 @@ A DownloadTask (= a single user input) is split into one (single file) or multip
 - [Bootstrap Checkboxes/Radios](https://bootsnipp.com/snippets/ZkMKE)
 
 ## License
-MIT [license](https://github.com/p1387h/docker-youtube-dl/blob/master/LICENSE.txt)
+MIT [license](https://github.com/ph1387/docker-youtube-dl/blob/master/LICENSE.txt)
